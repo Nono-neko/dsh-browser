@@ -1,0 +1,203 @@
+/**
+ * dsh-browser — browser half. Registers the locale dictionaries, mounts the
+ * sidebar entry (plain DOM, self-healing) and the center-column browser panel
+ * (React), subscribes to host open events (agent browser_open pushes), follows
+ * the active session's workspace (tabs persist per root), and contributes the
+ * plugin settings card to the official Plugins section.
+ *
+ * Failure policy: every DOM/runtime wiring failure is logged, never thrown —
+ * the web shell fails the whole boot when a plugin apply throws.
+ * @module dsh-browser/client
+ */
+
+import type {
+  ClientContext,
+  ISessions,
+  SessionId,
+  SettingsScope,
+  SettingsScopeSpec,
+} from '@deepseek-ai/dsh-client-runtime/client'
+// Type-only: pulls the locale plugin's Context merge (ctx.locale).
+import type {} from '@deepseek-ai/dsh-client-locale/client'
+// NOTE: the ui-settings and connection client type modules are deliberately
+// NOT imported: their declaration chains pull the HOST-side dsh-session
+// Context merge into the program, which conflicts with the runtime's
+// ctx.sessions (ISessions) typing. The settingsScope service face is declared
+// locally below instead.
+import { subscribeOpenEvents } from './api.ts'
+import { PanelController } from './controller.ts'
+import { en, zh, type BrowserKey } from './locales.ts'
+import { mountPanel } from './mount.tsx'
+import { createTabPersist, readPersisted } from './persist.ts'
+import { mountSidebarEntry } from './sidebar-entry.ts'
+import { initialState, makeTab, TabsStore } from './store.ts'
+import { setTranslator } from './translate.ts'
+import { BrowserSettingsForm } from './settings/card-form.ts'
+import { BrowserSettingsCard } from './settings/BrowserSettingsCard.tsx'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** Browser surface copy. */
+    'dsh-browser': BrowserKey
+  }
+}
+
+/** The settings-scope service face (provided by dsh-client-ui-settings). */
+interface SettingsScopeBinder {
+  bind<T>(spec: SettingsScopeSpec<T>): SettingsScope<T>
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    settingsScope: SettingsScopeBinder
+  }
+}
+
+/** Locale namespace this plugin owns. */
+const NS = 'dsh-browser'
+
+/** Settings namespace the card edits (the Host plugin registers it). */
+const SETTINGS_NS = 'dsh-browser'
+
+/** The browser settings the surfaces read (live, schema-defaulted). */
+interface BrowserSettings {
+  enabled?: boolean
+  announceToAgent?: boolean
+  defaultHome?: string
+  maxTabs?: number
+  allowPrivateAccess?: boolean
+}
+
+/** Services required by the browser half. */
+export const inject = ['sessions', 'slots', 'locale', 'connection', 'settingsScope', 'remote']
+
+/** Resolve the live settings read with schema defaults. */
+function resolveSettings(scope: SettingsScope<BrowserSettings>): {
+  enabled: boolean
+  defaultHome: string
+  maxTabs: number
+} {
+  const snapshot = scope.getSnapshot()
+  const value = snapshot.value ?? {}
+  return {
+    enabled: value.enabled ?? true,
+    defaultHome: typeof value.defaultHome === 'string' && value.defaultHome !== ''
+      ? value.defaultHome
+      : 'https://www.bing.com',
+    maxTabs: typeof value.maxTabs === 'number' ? Math.max(2, value.maxTabs) : 10,
+  }
+}
+
+/**
+ * Apply the browser half.
+ * @param ctx - client root context (sessions, slots, locale, settings).
+ */
+export function apply(ctx: ClientContext): void {
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-browser: dictionaries')
+  const t = ctx.locale.bind(NS)
+  const wideT: (key: string) => string = key => t(key as never)
+  setTranslator(wideT)
+
+  const sessions = ctx.sessions as unknown as ISessions
+  const settingsScope = ctx.settingsScope.bind<BrowserSettings>({ namespace: SETTINGS_NS })
+  const settings = (): { enabled: boolean; defaultHome: string; maxTabs: number } => resolveSettings(settingsScope)
+
+  // The tabs store survives the enabled toggle; only the DOM surfaces and the
+  // event subscription ride the syncUi effect.
+  const controller = new PanelController()
+  const store = new TabsStore(() => settings().maxTabs)
+  const persist = createTabPersist()
+  const disposePersist = store.subscribe(() => {
+    if (store.getSnapshot().root !== '') persist.save(store.getSnapshot())
+  })
+
+  // The project root follows the active session's cwd; switching sessions
+  // re-binds the store (tabs persist per root in localStorage).
+  const rebindRoot = (): void => {
+    const snapshot = sessions.list.getSnapshot()
+    const sessionId = snapshot.current as SessionId | undefined
+    const cwd = sessionId === undefined ? undefined : snapshot.byId[sessionId]?.cwd
+    const root = typeof cwd === 'string' && cwd !== '' ? cwd : ''
+    if (store.getSnapshot().root === root) return
+    const persisted = readPersisted(root)
+    if (persisted !== undefined && persisted.tabs.length > 0) {
+      store.set({
+        root,
+        tabs: persisted.tabs.map(entry => {
+          const tab = makeTab(entry.url)
+          tab.id = entry.id
+          tab.label = entry.label
+          tab.stack = entry.stack
+          tab.index = entry.index
+          return tab
+        }),
+        activeId: persisted.activeId,
+      })
+    } else {
+      store.set(initialState(root))
+    }
+  }
+  rebindRoot()
+  const disposeSessions = sessions.list.subscribe(rebindRoot)
+
+  let disposeUi: (() => void) | undefined
+  const syncUi = (): void => {
+    if (settings().enabled && disposeUi === undefined) {
+      disposeUi = ctx.effect(() => {
+        const disposers: Array<() => void> = []
+        disposers.push(subscribeOpenEvents((url) => {
+          store.openTab(url)
+          controller.open()
+        }))
+        try {
+          disposers.push(mountSidebarEntry(controller))
+          disposers.push(mountPanel(controller, store, {
+            defaultHome: () => settings().defaultHome,
+            maxTabs: () => settings().maxTabs,
+            t: wideT,
+          }))
+        } catch (error) {
+          // DOM failures degrade the panel, never the GUI.
+          console.warn('[dsh-browser] mount failed:', error)
+        }
+        return () => {
+          for (const dispose of disposers.splice(0)) dispose()
+        }
+      }, 'dsh-browser: ui mounts')
+    } else if (!settings().enabled && disposeUi !== undefined) {
+      disposeUi()
+      disposeUi = undefined
+    }
+  }
+  settingsScope.subscribe(syncUi)
+  syncUi()
+
+  // Plugin configuration card: one staged form over the dsh-browser settings
+  // namespace, contributed to the official Plugins section.
+  ctx.slots.inject('settings.plugin.item', () => {
+    const form = new BrowserSettingsForm<BrowserSettings>(settingsScope, [
+      { field: 'enabled', kind: 'boolean' },
+      { field: 'announceToAgent', kind: 'boolean' },
+      { field: 'allowPrivateAccess', kind: 'boolean' },
+      { field: 'defaultHome', kind: 'text' },
+      { field: 'maxTabs', kind: 'number' },
+    ])
+    const disposeForm = (): void => { form.dispose() }
+    return [disposeForm, ctx.slots.register({
+      name: 'settings.plugin.item',
+      id: 'dsh-browser',
+      order: 90,
+      locale: NS,
+      inject: () => form.injectFace(),
+    }, BrowserSettingsCard)]
+  })
+
+  ctx.effect(() => () => {
+    disposeUi?.()
+    disposeUi = undefined
+    disposeSessions()
+    disposePersist()
+    persist.flush()
+    persist.dispose()
+  }, 'dsh-browser: wiring')
+}

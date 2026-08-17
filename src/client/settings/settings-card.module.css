@@ -1,0 +1,232 @@
+/**
+ * Plugin settings card styles. Rides the dsh --dsw-* tokens so the card
+ * follows the active theme; layout follows the official plugin-card look
+ * (title + description header, staged rows, save/discard footer).
+ */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-base, #ffffff);
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font-family: var(--dsw-font-family, inherit);
+  font-size: 13px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.headerCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.description {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
+}
+
+.pending {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2, #eef0f4);
+  color: var(--dsw-alias-label-secondary, #5f6672);
+  font-size: 11px;
+}
+
+.readOnly {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-error, #d03050);
+}
+
+.notExposed {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+}
+
+.rowCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rowLabel {
+  font-weight: 500;
+}
+
+.rowHint {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
+}
+
+.segment {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmentButton {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #5f6672);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmentButton + .segmentButton {
+  border-left: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+}
+
+.segmentButton[data-active] {
+  background: var(--dsw-alias-bg-layer-2, #eef0f4);
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font-weight: 500;
+}
+
+.segmentButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.badge {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
+}
+
+.textControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-width: 180px;
+}
+
+.textInput {
+  flex: 1;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, #eef0f4);
+  color: var(--dsw-alias-label-primary, #1f2329);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.textInput:focus {
+  border-color: var(--dsw-alias-state-business-primary, #4d6bfe);
+}
+
+.textInput[data-invalid] {
+  border-color: var(--dsw-alias-label-error, #d03050);
+}
+
+.textInput:disabled {
+  opacity: 0.6;
+}
+
+.invalidHint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-error, #d03050);
+}
+
+.resetButton {
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #5f6672);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.resetButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+.resetButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.saveFailed {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--dsw-alias-label-error, #d03050);
+}
+
+.discardButton {
+  padding: 5px 14px;
+  border: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #5f6672);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.discardButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+.saveButton {
+  padding: 5px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--dsw-alias-state-business-primary, #4d6bfe);
+  color: #ffffff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.saveButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

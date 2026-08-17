@@ -1,0 +1,13 @@
+# dsh-browser bundle patch: inserts the dual-face plugin row into a dsh
+# profile roster. Applied as a profile bundle layer (the `dsh.bundle.patch`
+# manifest field); install with
+# `dsh plugin --profile <name> add link:<repo>`.
+#
+# The row is a bare plugin by package name: the node half (exports ".") runs
+# in the host process (agent tools, /api/dsh-browser routes, settings section,
+# prompt announcement), and the `dsh.client` declaration in package.json makes
+# the browser half (exports "./client", served at /plugins/dsh-browser/client.js)
+# load in the web GUI.
+- insert:
+    - id: dsh-browser
+      name: '@linxin666/dsh-browser'

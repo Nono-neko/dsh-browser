@@ -1,0 +1,10 @@
+packages:
+  - '.'
+
+# 独立仓库需要 SDK peer 闭包齐全（vitest 内联转译 dsh-tools/dsh-llm 的导入图）；
+# 生产运行时仍由 DSH profile 树解析，产物不携带这些包。
+autoInstallPeers: true
+
+allowBuilds:
+  # esbuild 的 postinstall 校验平台二进制；允许其运行脚本。
+  esbuild: true

@@ -22,7 +22,7 @@ import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
 /** The package id, stamped into the loader handoff and style tags. */
-const ID = '@linxin666/dsh-browser'
+const ID = '@nono-neko/dsh-browser'
 
 /** Browser platform seed table (mirrors the shell's frozen module table). */
 const PLATFORM_MODULES = [

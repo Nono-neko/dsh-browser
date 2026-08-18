@@ -47,7 +47,7 @@ plugin settings card. Hot-pluggable — mounted via
 dsh plugin --profile <name> add link:<repo>
 
 # from npm (once published)
-dsh plugin --profile <name> add @linxin666/dsh-browser
+dsh plugin --profile <name> add @nono-neko/dsh-browser
 ```
 
 Restart `dsh web`; the sidebar entry appears. The web profile needs the

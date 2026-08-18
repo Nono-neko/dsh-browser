@@ -40,7 +40,7 @@ agent 工具、`/api/dsh-browser` 路由族（SSE 打开事件流 + 工作区文
 dsh plugin --profile <name> add link:<repo>
 
 # npm（发布后）
-dsh plugin --profile <name> add @linxin666/dsh-browser
+dsh plugin --profile <name> add @nono-neko/dsh-browser
 ```
 
 重启 `dsh web` 后侧边栏出现入口。web profile 需具备 bundle 注入的

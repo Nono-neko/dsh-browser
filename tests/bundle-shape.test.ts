@@ -22,7 +22,7 @@ describe('client bundle closure shape', () => {
 
   it('opens the __ModuleLoader__ handoff with the package id', () => {
     expect(head).toContain('window.__ModuleLoader__.load')
-    expect(head).toContain('"@linxin666/dsh-browser"')
+    expect(head).toContain('"@nono-neko/dsh-browser"')
     expect(head).toContain('factory: (require) =>')
   })
 

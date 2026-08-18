@@ -5,7 +5,7 @@
  * system-prompt announcement. The browser half (./client) renders the sidebar
  * entry, the multi-tab panel, and the settings card. Everything rides the
  * official NPM SDK packages — no dsh source changes.
- * @module @linxin666/dsh-browser
+ * @module @nono-neko/dsh-browser
  */
 
 import type { Context } from '@deepseek-ai/cordis'

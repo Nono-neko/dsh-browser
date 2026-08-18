@@ -1,5 +1,5 @@
 {
-  "name": "@linxin666/dsh-browser",
+  "name": "@nono-neko/dsh-browser",
   "version": "0.1.0",
   "description": "Embedded browser for the DSH web GUI: a sidebar entry plus a center-column panel with multi-tab iframe browsing (address bar, back/forward, per-workspace persistence), a workspace file viewer, agent tools (browser_open, browser_read), a plugin settings card, and a system-prompt announcement. Hot-pluggable as a standalone cordis bundle — mounted via `dsh plugin --profile <name> add link:<repo>`, no dsh source changes.",
   "type": "module",

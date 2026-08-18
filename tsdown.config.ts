@@ -170,10 +170,13 @@ const clientConfig: UserConfig = {
   }],
   outputOptions: {
     entryFileNames: 'client.js',
-    banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
+    // The module/exports declarations are part of the banner (inside the
+    // factory scope), NOT a separate `intro`: newer tsdown versions emit
+    // `intro` outside the factory, which breaks the closure with
+    // "exports is not defined" at load time.
+    banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {\nvar module = { exports: {} };\nvar exports = module.exports;`,
     footer: 'return module.exports; } });',
   },
-  intro: 'var module = { exports: {} }; var exports = module.exports;',
 }
 
 export default [libConfig, clientConfig]

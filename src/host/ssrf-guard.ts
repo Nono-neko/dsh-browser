@@ -60,13 +60,20 @@ function inRange(value: number, start: string, end: string): boolean {
   return value >= from && value <= to
 }
 
-/** IPv4-mapped IPv6 (::ffff:a.b.c.d) reuses the IPv4 judgment. */
-const V4_MAPPED = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/
+/** IPv4-mapped IPv6 reuses the IPv4 judgment for dotted and hexadecimal tails. */
+const V4_MAPPED_DOTTED = /^(?:::ffff:|(?:0{1,4}:){5}ffff:)(\d+\.\d+\.\d+\.\d+)$/i
+const V4_MAPPED_HEX = /^(?:::ffff:|(?:0{1,4}:){5}ffff:)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i
 
 function isPrivateIPv6(address: string): boolean {
-  const mapped = V4_MAPPED.exec(address.toLowerCase())
-  if (mapped !== null) return isPrivateIPv4(mapped[1])
   const normalized = address.toLowerCase()
+  const dotted = V4_MAPPED_DOTTED.exec(normalized)
+  if (dotted !== null) return isPrivateIPv4(dotted[1])
+  const hexadecimal = V4_MAPPED_HEX.exec(normalized)
+  if (hexadecimal !== null) {
+    const high = Number.parseInt(hexadecimal[1], 16)
+    const low = Number.parseInt(hexadecimal[2], 16)
+    return isPrivateIPv4(`${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`)
+  }
   if (normalized === '::' || normalized === '::1') return true
   if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true // fc00::/7 unique local
   if (normalized.startsWith('fe8') || normalized.startsWith('fe9')

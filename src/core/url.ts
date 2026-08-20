@@ -24,6 +24,9 @@ export function normalizeAddress(input: string): string | null {
     // iframes must never load these from the address bar.
     return null
   }
+  if (/^(?:localhost|(?:[a-z0-9-]+\.)+[a-z0-9-]+|\[[0-9a-f:.]+\]):\d+(?:[/?#]|$)/i.test(trimmed)) {
+    return tryParseHttp(`https://${trimmed}`)
+  }
   if (/^[a-z][a-z0-9+.-]*:/.test(lower)) {
     // Unknown scheme: refuse rather than guess.
     return null
@@ -82,4 +85,24 @@ export function displayLabel(url: string): string {
 /** Sort key for tabs: workspace files first, then by label (stable UX). */
 export function tabSortKey(url: string): string {
   return `${url.startsWith('/api/dsh-browser/file') ? '0' : '1'}${displayLabel(url).toLowerCase()}`
+}
+
+/**
+ * Wrap an http(s) URL in the browser proxy route so it loads through the dsh
+ * host (which strips X-Frame-Options / CSP frame-ancestors). Workspace-file
+ * URLs (relative or same-origin absolute), other /api/dsh-browser/* routes,
+ * and non-http URLs pass through unchanged — they are same-origin or never
+ * need proxying.
+ */
+export function toProxyUrl(url: string): string {
+  if (url.startsWith('/api/dsh-browser/')) return url
+  const parsed = tryParseHttp(url)
+  if (parsed === null) return url
+  try {
+    const u = new URL(parsed)
+    if (u.pathname.startsWith('/api/dsh-browser/')) return url
+  } catch {
+    // fall through to proxy
+  }
+  return `/api/dsh-browser/proxy?url=${encodeURIComponent(url)}`
 }

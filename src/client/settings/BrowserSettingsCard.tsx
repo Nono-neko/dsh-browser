@@ -61,7 +61,9 @@ function BooleanRow(props: {
   resetField: (field: string) => void
 }): JSX.Element {
   const { field, label, hint, state, writable, t, setBoolean, resetField } = props
-  const mode = state.text === 'true' ? 'on' : state.text === 'false' ? 'off' : 'inherit'
+  const mode = !state.overridden
+    ? 'inherit'
+    : state.text === 'true' ? 'on' : state.text === 'false' ? 'off' : 'inherit'
   return (
     <div className={css.row}>
       <div className={css.rowCopy}>

@@ -10,7 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
-import z from 'schemastery'
+import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
@@ -111,7 +111,7 @@ export function apply(ctx: Context, config?: Config): void {
       })
     }
     disposeRoutes = ctx.effect(
-      () => registerBrowserRoutes(ctx, createWorkspaceGate(ctx), broadcaster),
+      () => registerBrowserRoutes(ctx, createWorkspaceGate(ctx), broadcaster, value.allowPrivateAccess),
       'dsh-browser: routes',
     )
     const tools = [

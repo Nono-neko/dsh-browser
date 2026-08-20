@@ -43,15 +43,15 @@ const RUNTIME_STORE_EXEMPTION = '@deepseek-ai/dsh-client-runtime/client'
 /** Externals resolved from the loader module table. */
 const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
 
-/**
- * Wire/type layers a client bundle may inline: browser-safe contract surfaces
- * with no runtime identity to share. Everything else under @deepseek-ai/* is
- * either a module-table entry (external) or a leak the purity gate rejects.
- */
-const INLINE_SAFE = /^@deepseek-ai\/dsh-(host-apiproxy|session|llm|tools|brand)(\/|$)/
-const GENERATED_REMOTE = /^@deepseek-ai\/dsh-[a-z0-9]+(?:-[a-z0-9]+)*\/remote$/
+function packageRoot(): string {
+  try {
+    return fileURLToPath(new URL('.', import.meta.url))
+  } catch {
+    return resolvePath('.')
+  }
+}
 
-const PACKAGE_ROOT = fileURLToPath(new URL('.', import.meta.url))
+const PACKAGE_ROOT = packageRoot()
 
 /** Virtual-id wrapper keeping module CSS away from tsdown's own css pipeline. */
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
@@ -88,7 +88,9 @@ const libConfig: UserConfig = {
   // Every @deepseek-ai/* value import stays external: the dsh profile tree
   // owns the runtime instances (the same stance the dsh-web-ui family takes
   // in its node-half builds). Local code and non-SDK deps inline.
-  external: [/^@deepseek-ai\//],
+  deps: {
+    neverBundle: [/^@deepseek-ai\//],
+  },
 }
 
 /** The browser-half closure-factory config. */
@@ -104,27 +106,28 @@ const clientConfig: UserConfig = {
   dts: false,
   sourcemap: true,
   clean: false,
-  external: [...CLIENT_EXTERNALS],
+  deps: {
+    neverBundle: [...CLIENT_EXTERNALS],
+    // Anything NOT in the loader module table must inline: a require() the
+    // table cannot answer is a guaranteed runtime throw.
+    alwaysBundle: (id: string) => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
+  },
   // Browser bundles inline node-idiom deps that probe NODE_ENV / import.meta.
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
     'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
     'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
   },
-  // Anything NOT in the loader module table must inline: a require() the
-  // table cannot answer is a guaranteed runtime throw.
-  noExternal: (id: string) => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
   plugins: [{
     // Bundle purity gate (build-time mirror of the module-edge rules):
-    // platform seed entries stay external, inline-safe wire layers inline,
-    // and every other @deepseek-ai value import is a build error.
+    // Platform seed entries stay external. Every other @deepseek-ai value
+    // import is a build error; type-only imports disappear before this hook.
     name: 'dsh-client-bundle-purity',
     resolveId(source: string) {
       if (!source.startsWith('@deepseek-ai/')) return null
       if (CLIENT_EXTERNALS.includes(source)) return null
-      if (INLINE_SAFE.test(source) || GENERATED_REMOTE.test(source)) return null
       throw new Error(
-        `client bundle purity: "${source}" is not a platform module (CLIENT_EXTERNALS), an inline-safe wire layer, or a generated /remote contribution — `
+        `client bundle purity: "${source}" is not a platform module (CLIENT_EXTERNALS) - `
         + 'cross-plugin value imports are forbidden; collaborate through cordis services (type-only imports are erased and never reach this gate)',
       )
     },

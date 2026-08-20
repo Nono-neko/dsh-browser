@@ -44,6 +44,12 @@ describe('isPrivateAddress (IPv6)', () => {
     expect(isPrivateAddress('::ffff:127.0.0.1')).toBe(true)
   })
 
+  it('rejects hexadecimal and expanded IPv4-mapped private addresses', () => {
+    expect(isPrivateAddress('::ffff:7f00:1')).toBe(true)
+    expect(isPrivateAddress('0:0:0:0:0:ffff:c0a8:1')).toBe(true)
+    expect(isPrivateAddress('::ffff:a9fe:a9fe')).toBe(true)
+  })
+
   it('accepts ordinary global addresses', () => {
     expect(isPrivateAddress('2606:4700:4700::1111')).toBe(false)
   })

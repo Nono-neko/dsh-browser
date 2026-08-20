@@ -44,6 +44,40 @@ describe('fetchGuarded', () => {
     }
   })
 
+  it('returns a structured failure for an invalid redirect location', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, {
+      status: 302,
+      headers: { location: 'http://[' },
+    }))
+
+    const outcome = await fetchGuarded('https://public.example/start', false, { fetch: fetchMock })
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.error).toContain('invalid redirect location')
+  })
+
+  it('contains redirect body cancellation failures', async () => {
+    let request = 0
+    const redirectBody = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(new Error('cancel failed'))
+      },
+    })
+    const fetchMock = vi.fn(async () => {
+      request += 1
+      if (request === 1) {
+        return new Response(redirectBody, { status: 302, headers: { location: '/final' } })
+      }
+      return new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } })
+    })
+
+    const outcome = await fetchGuarded('https://public.example/start', false, { fetch: fetchMock })
+
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) await outcome.res.text()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+  })
+
   it('allows private targets when the override is on', async () => {
     const fetchMock = vi.fn(async () => new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } }))
     const outcome = await fetchGuarded('http://192.168.0.1/', true, { fetch: fetchMock })
@@ -70,24 +104,177 @@ describe('readPage', () => {
     expect(result.text).not.toContain('var x')
   })
 
+  it('cancels the response body before returning an HTTP error', async () => {
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
+      status: 503,
+      headers: { 'content-type': 'text/plain' },
+    }))
+
+    const result = await readPage('https://public.example/unavailable', false, 1000, { fetch: fetchMock })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('HTTP 503')
+    expect(cancelled).toBe(true)
+  })
+
+  it('keeps an HTTP error structured when body cancellation fails', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(new Error('cancel failed'))
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
+      status: 503,
+      headers: { 'content-type': 'text/plain' },
+    }))
+
+    const result = await readPage('https://public.example/unavailable', false, 1000, { fetch: fetchMock })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('HTTP 503')
+  })
+
   it('reports unsupported content types', async () => {
-    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
       status: 200,
       headers: { 'content-type': 'application/octet-stream' },
     }))
     const result = await readPage('https://public.example/bin', false, 1000, { fetch: fetchMock })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('unsupported content type')
+    expect(cancelled).toBe(true)
+  })
+
+  it('keeps an unsupported-type error structured when body cancellation fails', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(new Error('cancel failed'))
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/octet-stream' },
+    }))
+
+    const result = await readPage('https://public.example/bin', false, 1000, { fetch: fetchMock })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('unsupported content type')
   })
 
   it('respects the content-length cap', async () => {
-    const fetchMock = vi.fn(async () => new Response('x', {
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
       status: 200,
       headers: { 'content-type': 'text/plain', 'content-length': String(3 * 1024 * 1024) },
     }))
     const result = await readPage('https://public.example/big', false, 1000, { fetch: fetchMock })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('byte cap')
+    expect(cancelled).toBe(true)
+  })
+
+  it('keeps the declared-size error structured when body cancellation fails', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(new Error('cancel failed'))
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/plain', 'content-length': String(3 * 1024 * 1024) },
+    }))
+
+    const result = await readPage('https://public.example/big', false, 1000, { fetch: fetchMock })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('byte cap')
+  })
+
+  it('stops reading and cancels a chunked body once the decoded byte cap is exceeded', async () => {
+    const chunk = new Uint8Array(512 * 1024).fill(120)
+    const totalBytes = 8 * 1024 * 1024
+    let pulledBytes = 0
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulledBytes >= totalBytes) {
+          controller.close()
+          return
+        }
+        controller.enqueue(chunk)
+        pulledBytes += chunk.byteLength
+      },
+      cancel() {
+        cancelled = true
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    }))
+
+    const result = await readPage('https://public.example/chunked', false, 1000, { fetch: fetchMock })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('byte cap')
+    expect(cancelled).toBe(true)
+    expect(pulledBytes).toBeLessThan(totalBytes)
+  })
+
+  it('keeps the byte-cap error structured when stream cancellation fails', async () => {
+    const chunk = new Uint8Array(1024 * 1024).fill(120)
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk)
+      },
+      cancel() {
+        return Promise.reject(new Error('cancel failed'))
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    }))
+
+    const result = await readPage('https://public.example/chunked', false, 1000, { fetch: fetchMock })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('byte cap')
+  })
+
+  it('returns a structured failure when the response body cannot be read', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error('connection reset'))
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    }))
+
+    const result = await readPage('https://public.example/reset', false, 1000, { fetch: fetchMock })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('body read failed: connection reset')
   })
 })
 

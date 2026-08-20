@@ -42,6 +42,19 @@ describe('TabsStore', () => {
     expect(store.getSnapshot().tabs[0].url).toBe('https://a.example/2')
   })
 
+  it('updates the tab label while walking history', () => {
+    const store = storeWith()
+    store.set(initialState('root'))
+    const id = store.getSnapshot().activeId as string
+    store.navigate(id, 'https://first.example/page')
+    store.navigate(id, 'https://second.example/page')
+
+    store.back(id)
+    expect(store.getSnapshot().tabs[0].label).toBe('first.example/page')
+    store.forward(id)
+    expect(store.getSnapshot().tabs[0].label).toBe('second.example/page')
+  })
+
   it('navigating after going back truncates the forward history', () => {
     const store = storeWith()
     store.set(initialState('root'))
@@ -119,5 +132,31 @@ describe('TabsStore', () => {
       activeId: tab.id,
     })
     expect(store.getSnapshot().tabs[0].url).toBe('https://a.example/restored')
+  })
+
+  it('enforces the tab cap while replacing restored state', () => {
+    const store = storeWith(2)
+    const first = makeTab('https://a.example/1')
+    const second = makeTab('https://a.example/2')
+    const active = makeTab('https://a.example/3')
+
+    store.set({ root: 'root', tabs: [first, second, active], activeId: active.id })
+
+    expect(store.getSnapshot().tabs.map(tab => tab.id)).toEqual([second.id, active.id])
+    expect(store.getSnapshot().activeId).toBe(active.id)
+  })
+
+  it('enforces a lower live tab cap immediately', () => {
+    let maxTabs = 3
+    const store = new TabsStore(() => maxTabs)
+    const first = makeTab('https://a.example/1')
+    const second = makeTab('https://a.example/2')
+    const active = makeTab('https://a.example/3')
+    store.set({ root: 'root', tabs: [first, second, active], activeId: active.id })
+
+    maxTabs = 2
+    store.enforceLimit()
+
+    expect(store.getSnapshot().tabs.map(tab => tab.id)).toEqual([second.id, active.id])
   })
 })

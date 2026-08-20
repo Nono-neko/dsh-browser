@@ -11,6 +11,15 @@ describe('normalizeAddress', () => {
     expect(normalizeAddress('example.com/path')).toBe('https://example.com/path')
   })
 
+  it('opens dotted hosts with an explicit port', () => {
+    expect(normalizeAddress('example.com:8080/path')).toBe('https://example.com:8080/path')
+  })
+
+  it('opens localhost and IPv6 development addresses with a port', () => {
+    expect(normalizeAddress('localhost:3000')).toBe('https://localhost:3000/')
+    expect(normalizeAddress('[::1]:3000')).toBe('https://[::1]:3000/')
+  })
+
   it('turns bare words into a search query', () => {
     expect(normalizeAddress('deepseek harness')).toBe('https://www.bing.com/search?q=deepseek%20harness')
   })

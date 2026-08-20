@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { normalizeAddress, displayLabel } from '../../core/url.ts'
+import { normalizeAddress, displayLabel, toProxyUrl } from '../../core/url.ts'
 import { START_URL, type BrowserTab, type TabsStore } from '../store.ts'
 import type { BrowserPanelDeps } from '../mount.tsx'
 import { StartPage } from './StartPage.tsx'
@@ -16,6 +16,15 @@ import css from './panel.module.css'
 interface BrowserPanelProps {
   store: TabsStore
   deps: BrowserPanelDeps
+}
+
+function isWorkspaceFileUrl(value: string): boolean {
+  try {
+    const url = new URL(value, window.location.href)
+    return url.origin === window.location.origin && url.pathname === '/api/dsh-browser/file'
+  } catch {
+    return false
+  }
 }
 
 export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
@@ -174,8 +183,9 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
                 <iframe
                   key={`${tab.id}:${tab.nonce}`}
                   className={css.frame}
-                  src={tab.url}
+                  src={toProxyUrl(tab.url)}
                   title={label(tab)}
+                  sandbox={isWorkspaceFileUrl(tab.url) ? '' : undefined}
                   allow="clipboard-write; fullscreen"
                   referrerPolicy="no-referrer-when-downgrade"
                 />

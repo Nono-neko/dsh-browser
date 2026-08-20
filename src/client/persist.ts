@@ -5,13 +5,58 @@
  * @module dsh-browser/client/persist
  */
 
-import type { PersistedTabs, TabsState } from './store.ts'
+import { tryParseHttp } from '../core/url.ts'
+import { START_URL, type PersistedTabs, type TabsState } from './store.ts'
 
 const KEY_PREFIX = 'dsh.browser.v1.'
 const DEBOUNCE_MS = 150
 
 function keyFor(root: string): string {
   return `${KEY_PREFIX}${root}`
+}
+
+type PersistedTab = PersistedTabs['tabs'][number]
+
+/** Whether a stored URL is one the panel itself can create. */
+function isRestorableUrl(value: string): boolean {
+  if (value === START_URL || tryParseHttp(value) !== null) return true
+  if (!value.startsWith('/')) return false
+  try {
+    const parsed = new URL(value, 'http://dsh.local')
+    return parsed.pathname === '/api/dsh-browser/file'
+      && parsed.searchParams.get('root') !== null
+      && parsed.searchParams.get('root') !== ''
+      && parsed.searchParams.get('path') !== null
+      && parsed.searchParams.get('path') !== ''
+  } catch {
+    return false
+  }
+}
+
+/** Parse one complete tab record, rejecting structurally inconsistent data. */
+function parseTab(value: unknown): PersistedTab | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const tab = value as Record<string, unknown>
+  if (typeof tab.id !== 'string' || tab.id === '') return undefined
+  if (typeof tab.url !== 'string' || !isRestorableUrl(tab.url)) return undefined
+  if (typeof tab.label !== 'string') return undefined
+  if (!Array.isArray(tab.stack) || !tab.stack.every(entry => typeof entry === 'string' && isRestorableUrl(entry))) {
+    return undefined
+  }
+  if (!Number.isInteger(tab.index)) return undefined
+  const index = tab.index as number
+  if (tab.url === START_URL) {
+    if (tab.stack.length !== 0 || index !== -1) return undefined
+  } else if (tab.stack.includes(START_URL) || index < 0 || index >= tab.stack.length || tab.stack[index] !== tab.url) {
+    return undefined
+  }
+  return {
+    id: tab.id,
+    url: tab.url,
+    label: tab.label,
+    stack: [...tab.stack] as string[],
+    index,
+  }
 }
 
 /** Serialize the persistable slice of a tabs state. */
@@ -21,7 +66,7 @@ export function serializeState(state: TabsState): PersistedTabs {
       id: tab.id,
       url: tab.url,
       label: tab.label,
-      stack: tab.stack,
+      stack: [...tab.stack],
       index: tab.index,
     })),
     activeId: state.activeId,
@@ -34,15 +79,21 @@ export function readPersisted(root: string): PersistedTabs | undefined {
   try {
     const raw = localStorage.getItem(keyFor(root))
     if (raw === null) return undefined
-    const parsed = JSON.parse(raw) as Partial<PersistedTabs>
+    const parsed = JSON.parse(raw) as { tabs?: unknown; activeId?: unknown }
     if (!Array.isArray(parsed.tabs)) return undefined
-    return {
-      tabs: parsed.tabs.filter(tab =>
-        typeof tab === 'object' && tab !== null
-        && typeof tab.id === 'string' && typeof tab.url === 'string',
-      ),
-      activeId: typeof parsed.activeId === 'string' ? parsed.activeId : undefined,
+    const seen = new Set<string>()
+    const tabs: PersistedTab[] = []
+    for (const candidate of parsed.tabs) {
+      const tab = parseTab(candidate)
+      if (tab === undefined || seen.has(tab.id)) continue
+      seen.add(tab.id)
+      tabs.push(tab)
     }
+    if (tabs.length === 0) return undefined
+    const activeId = typeof parsed.activeId === 'string' && seen.has(parsed.activeId)
+      ? parsed.activeId
+      : tabs[0].id
+    return { tabs, activeId }
   } catch {
     return undefined
   }
@@ -57,26 +108,43 @@ export interface TabPersist {
   dispose(): void
 }
 
+interface PagehideTarget {
+  addEventListener(type: 'pagehide', listener: () => void): void
+  removeEventListener(type: 'pagehide', listener: () => void): void
+}
+
+/** Flush pending tab writes before the browser freezes or discards the page. */
+export function bindTabPersistPagehide(
+  persist: Pick<TabPersist, 'flush'>,
+  target: PagehideTarget = window,
+): () => void {
+  const flush = (): void => { persist.flush() }
+  target.addEventListener('pagehide', flush)
+  return () => { target.removeEventListener('pagehide', flush) }
+}
+
 /** Create the debounced persister with the given storage backend. */
 export function createTabPersist(storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage): TabPersist {
   let timer: ReturnType<typeof setTimeout> | undefined
-  let pending: TabsState | undefined
+  const pending = new Map<string, PersistedTabs>()
 
   const write = (): void => {
-    if (pending === undefined) return
-    const state = pending
-    pending = undefined
-    if (state.root === '') return
-    try {
-      storage.setItem(keyFor(state.root), JSON.stringify(serializeState(state)))
-    } catch {
-      // Quota / privacy-mode failures are best-effort.
+    timer = undefined
+    const batch = [...pending]
+    pending.clear()
+    for (const [root, state] of batch) {
+      try {
+        storage.setItem(keyFor(root), JSON.stringify(state))
+      } catch {
+        // Quota / privacy-mode failures are best-effort.
+      }
     }
   }
 
   return {
     save(state) {
-      pending = state
+      if (state.root === '') return
+      pending.set(state.root, serializeState(state))
       if (timer !== undefined) clearTimeout(timer)
       timer = setTimeout(write, DEBOUNCE_MS)
     },
@@ -90,7 +158,7 @@ export function createTabPersist(storage: Pick<Storage, 'getItem' | 'setItem'> =
     dispose() {
       if (timer !== undefined) clearTimeout(timer)
       timer = undefined
-      pending = undefined
+      pending.clear()
     },
   }
 }

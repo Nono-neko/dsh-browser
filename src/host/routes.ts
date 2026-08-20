@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BrowserEnvelope, BrowserEvent, BrowserError, WorkspaceListing } from '../core/types.ts'
-import { fetchGuarded } from './tools.ts'
+import { closeBrowser, renderUrl, type BrowserOptions } from './browser-pool.ts'
 import { isPathInside, type WorkspaceGate } from './gate.ts'
 
 const OK = <T>(value: T): BrowserEnvelope<T> => ({ ok: true, value })
@@ -247,17 +247,17 @@ async function resolveInside(canonicalRoot: string, root: string, rel: string): 
 }
 
 /**
- * Proxy handler: fetches the target URL through the host (with the SSRF
- * guard applied to every hop), strips X-Frame-Options and CSP frame-ancestors
- * so the page can render in the panel iframe, injects a <base> into HTML so
- * relative resources resolve against the original origin, and streams the body
- * back to the client. Only GET is supported (form posts / uploads are out of
- * scope for the embedded viewer).
+ * Proxy handler: renders the target URL with a headless Chromium (Puppeteer)
+ * so JavaScript-executed pages load correctly, strips the embedding
+ * restriction headers, injects a <base> so relative resources resolve
+ * against the original origin, and returns the executed HTML to the panel
+ * iframe. The browser instance is shared and lazily launched; proxy settings
+ * are passed through Chromium's --proxy-server flag.
  */
 async function handleProxy(
   req: IncomingMessage,
   res: ServerResponse,
-  allowPrivate: boolean,
+  browserOptions: BrowserOptions,
 ): Promise<void> {
   if (!isLoopbackRequest(req)) {
     forbidden(res)
@@ -275,63 +275,48 @@ async function handleProxy(
     return
   }
 
-  const outcome = await fetchGuarded(target, allowPrivate)
-  if (!outcome.ok) {
-    json(res, FAIL({ code: 'bad-request', message: outcome.error }), 400)
+  let rendered: { html: string; finalUrl: string }
+  try {
+    rendered = await renderUrl(target, browserOptions)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    json(res, FAIL({ code: 'bad-request', message: `render failed: ${message}` }), 502)
     return
   }
 
-  const { res: upstream, finalUrl } = outcome
-
-  // Strip the embedding-restriction headers; everything else passes through.
-  const headers = new Headers(upstream.headers)
-  headers.delete('x-frame-options')
-  headers.delete('content-security-policy')
-  headers.delete('content-security-policy-report-only')
-
-  const contentType = headers.get('content-type') ?? ''
-  const contentLength = headers.get('content-length')
-  const size = contentLength !== null ? Number(contentLength) : Infinity
-
-  // Small HTML gets a <base> so relative images/styles/scripts resolve
-  // against the original origin instead of the proxy URL.
-  if (/text\/html/i.test(contentType) && size <= MAX_BASE_INJECT_BYTES) {
-    let html = await upstream.text()
-    let baseUrl: string
-    try {
-      const parsed = new URL(finalUrl)
-      baseUrl = parsed.origin + parsed.pathname.replace(/[^/]*$/, '')
-    } catch {
-      baseUrl = finalUrl.replace(/[^/]*$/, '')
-    }
-    const baseTag = `<base href="${baseUrl}">`
-    if (!/<base\s/i.test(html)) {
-      html = /<head[^>]*>/i.test(html)
-        ? html.replace(/<head[^>]*>/i, match => match + baseTag)
-        : baseTag + html
-    }
-    const body = Buffer.from(html, 'utf8')
-    headers.set('content-length', body.length.toString())
-    res.writeHead(upstream.status, Object.fromEntries(headers.entries()))
-    res.end(body)
-    return
+  // Inject <base> so relative resources load from the original origin
+  // instead of the proxy URL. Puppeteer already executed the page's JS,
+  // so the returned HTML is the fully-rendered DOM.
+  let html = rendered.html
+  let baseUrl: string
+  try {
+    const parsed = new URL(rendered.finalUrl)
+    baseUrl = parsed.origin + parsed.pathname.replace(/[^/]*$/, '')
+  } catch {
+    baseUrl = rendered.finalUrl.replace(/[^/]*$/, '')
+  }
+  const baseTag = `<base href="${baseUrl}">`
+  // Intercept _blank links and window.open() so navigation stays inside the
+  // panel instead of popping the system browser. _blank / window.open opens
+  // a new tab; ordinary links navigate the current tab. The parent window
+  // listens for these messages and routes them through the proxy.
+  const navInterceptor = `<script>(function(){var _o=window.open;window.open=function(u){if(u&&u!==''&&u!=='about:blank'){window.parent.postMessage({source:'dsh-browser',kind:'open',url:String(u)},'*');return null;}return _o.apply(this,arguments);};document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a');if(a&&a.href&&/^https?:/i.test(a.href)){e.preventDefault();var t=(a.target||'').toLowerCase();var kind=(t==='_blank'||t==='_new')?'open':'navigate';window.parent.postMessage({source:'dsh-browser',kind:kind,url:a.href},'*');}},true);})();</script>`
+  const headInject = baseTag + navInterceptor
+  if (!/<base\s/i.test(html)) {
+    html = /<head[^>]*>/i.test(html)
+      ? html.replace(/<head[^>]*>/i, match => match + headInject)
+      : headInject + html
   }
 
-  // Stream everything else straight through.
-  res.writeHead(upstream.status, Object.fromEntries(headers.entries()))
-  if (upstream.body !== null) {
-    const reader = upstream.body.getReader()
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (value !== undefined) res.write(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-  res.end()
+  const body = Buffer.from(html, 'utf8')
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-cache',
+    'content-length': body.length.toString(),
+    // No CSP / X-Frame-Options — the whole point is to let this render in
+    // the panel iframe. The loopback fence keeps non-local clients out.
+  })
+  res.end(body)
 }
 
 /**
@@ -339,14 +324,14 @@ async function handleProxy(
  * @param ctx - context carrying the webServer service.
  * @param gate - the workspace gate every fs route runs through.
  * @param broadcaster - the open-event broadcaster shared with the agent tools.
- * @param allowPrivate - when true, the proxy may fetch private-range addresses (SSRF override).
- * @returns disposer removing every route.
+ * @param browserOptions - Puppeteer launch options (executable path, proxy server, private access).
+ * @returns disposer removing every route and closing the shared browser.
  */
 export function registerBrowserRoutes(
   ctx: Context,
   gate: WorkspaceGate,
   broadcaster: OpenBroadcaster,
-  allowPrivate = false,
+  browserOptions: BrowserOptions = {},
 ): () => void {
   const handleList = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (!isLoopbackRequest(req)) {
@@ -472,7 +457,7 @@ export function registerBrowserRoutes(
   try {
     // Exact routes must register before the prefix route — otherwise the
     // prefix /api/dsh-browser catches /proxy and /events first and 404s.
-    disposers.push(ctx.webServer.register({ kind: 'exact', path: PROXY_ROUTE, handler: (req, res) => safely((r, s) => handleProxy(r, s, allowPrivate), req, res) }))
+    disposers.push(ctx.webServer.register({ kind: 'exact', path: PROXY_ROUTE, handler: (req, res) => safely((r, s) => handleProxy(r, s, browserOptions), req, res) }))
     disposers.push(ctx.webServer.register({ kind: 'exact', path: '/api/dsh-browser/events', handler: (req, res) => safely(handleEvents, req, res) }))
     disposers.push(ctx.webServer.register({ kind: 'prefix', path: '/api/dsh-browser', handler: (req, res) => safely(async () => {
       const url = new URL(req.url ?? '/', 'http://x')
@@ -500,5 +485,6 @@ export function registerBrowserRoutes(
     disposed = true
     for (const dispose of disposers.reverse()) dispose()
     broadcaster.dispose()
+    void closeBrowser()
   }
 }

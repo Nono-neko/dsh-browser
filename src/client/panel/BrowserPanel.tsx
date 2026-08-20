@@ -40,6 +40,27 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
     setDraft(active !== undefined && active.url !== START_URL ? active.url : '')
   }, [active?.id, active?.url])
 
+  // Links clicked inside a proxied iframe post their URL here instead of
+  // opening the system browser. _blank / window.open opens a new tab;
+  // ordinary links navigate the active tab.
+  useEffect(() => {
+    const handler = (event: MessageEvent): void => {
+      const data = event.data
+      if (data === null || typeof data !== 'object' || data.source !== 'dsh-browser') return
+      const url = typeof data.url === 'string' ? data.url : ''
+      if (url === '') return
+      if (data.kind === 'open') {
+        store.openTab(url)
+      } else if (data.kind === 'navigate') {
+        const current = store.activeTab()
+        if (current !== undefined) store.navigate(current.id, url)
+        else store.openTab(url)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [store])
+
   const submitAddress = (): void => {
     if (active === undefined) return
     const url = normalizeAddress(draft)

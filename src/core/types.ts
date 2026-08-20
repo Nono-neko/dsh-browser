@@ -51,6 +51,10 @@ export interface BrowserConfig {
   maxTabs?: number
   /** When true, browser_read may fetch private-range addresses (SSRF override). */
   allowPrivateAccess?: boolean
+  /** Path to a Chromium-compatible executable; auto-detected when empty. */
+  browserExecutable?: string
+  /** Proxy server passed to Chromium as --proxy-server, e.g. http://127.0.0.1:7890. */
+  proxyServer?: string
 }
 
 /** The result of one browser_read fetch, as rendered to the agent. */

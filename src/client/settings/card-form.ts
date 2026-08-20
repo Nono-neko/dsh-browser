@@ -129,18 +129,35 @@ export class BrowserSettingsForm<T extends object> {
     if (this.saving || this.cached.invalid || this.cached.status !== 'ready' || !this.cached.writable) return
     this.saving = true
     this.publish()
+    const submitted = new Map(this.staged)
     const writes: Array<Promise<void>> = []
-    for (const [field, staged] of this.staged) {
+    for (const [field, staged] of submitted) {
       if (staged.kind === 'set') writes.push(this.scope.set(field, staged.value))
       else if (staged.kind === 'clear') writes.push(this.scope.unset(field))
     }
     try {
       await Promise.all(writes)
-      // The Host is the authority on acceptance; every write performs its own
-      // read-back, so clearing the drafts here re-seeds from the Host state.
-      this.staged.clear()
+      // SettingsScope settles after its authoritative read-back even when the
+      // Host rejects a mutation. Reconcile every submitted field against the
+      // accepted user layer instead of treating Promise resolution as success.
+      const snap = this.scope.getSnapshot()
+      const user = (snap.user !== null && typeof snap.user === 'object' && !Array.isArray(snap.user)
+        ? snap.user
+        : {}) as Record<string, unknown>
+      let rejected = false
+      for (const [field, staged] of submitted) {
+        const landed = staged.kind === 'clear'
+          ? !(field in user)
+          : staged.kind === 'set' && field in user && Object.is(user[field], staged.value)
+        if (!landed) rejected = true
+        // Preserve edits made while this save was crossing the wire.
+        if (landed && this.staged.get(field) === staged) {
+          this.staged.delete(field)
+          this.invalidText.delete(field)
+        }
+      }
       this.saving = false
-      this.failed = false
+      this.failed = rejected
     } catch {
       // A save that did not land keeps its drafts so the user can correct them.
       this.saving = false

@@ -118,29 +118,36 @@ function collapseSpaces(input: string): string {
 function removeStrippedTrees(html: string): string {
   let result = html
   for (const tag of STRIP_TAGS) {
-    // Repeatedly remove the innermost occurrence until none remain.
-    const open = new RegExp(`<${tag}(\\s[^>]*)?>`, 'gi')
-    const close = new RegExp(`</${tag}>`, 'gi')
-    let guard = 0
-    while (guard < 100) {
-      const next = removeOneTree(result, open, close)
-      if (next === result) break
-      result = next
-      guard += 1
-    }
+    result = removeTagTrees(result, tag)
   }
   return result
 }
 
-/** Remove the first pair of matching open/close tags plus everything between. */
-function removeOneTree(input: string, open: RegExp, close: RegExp): string {
-  const start = open.exec(input)
-  if (start === null) return input
-  const end = close.exec(input.slice(start.index + start[0].length))
-  if (end === null) return input
-  const from = start.index
-  const to = start.index + start[0].length + end.index + end[0].length
-  return input.slice(0, from) + input.slice(to)
+/** Remove every balanced tree for one hidden-content tag, including nesting. */
+function removeTagTrees(input: string, tag: string): string {
+  const token = new RegExp(`<\\s*(/?)\\s*${tag}(?:\\s[^>]*)?>`, 'gi')
+  const chunks: string[] = []
+  let depth = 0
+  let cursor = 0
+  let match: RegExpExecArray | null
+  while ((match = token.exec(input)) !== null) {
+    const closing = match[1] === '/'
+    const selfClosing = !closing && /\/\s*>$/.test(match[0])
+    if (!closing) {
+      if (depth === 0) chunks.push(input.slice(cursor, match.index))
+      if (selfClosing) {
+        cursor = token.lastIndex
+      } else {
+        depth += 1
+      }
+      continue
+    }
+    if (depth === 0) continue
+    depth -= 1
+    if (depth === 0) cursor = token.lastIndex
+  }
+  if (depth === 0) chunks.push(input.slice(cursor))
+  return chunks.join('')
 }
 
 /** Decode the common HTML entities plus numeric forms. */

@@ -37,6 +37,57 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 /** Content types browser_read accepts as text. */
 const TEXT_TYPES = /^(text\/|application\/(json|xml|xhtml\+xml|javascript|ld\+json|x-httpd-php))/i
 
+type BodyTextOutcome =
+  | { ok: true; text: string }
+  | { ok: false; error: string }
+
+/** Best-effort response cleanup: a cancellation failure must not replace the result. */
+async function cancelBody(body: ReadableStream<Uint8Array> | null): Promise<void> {
+  try {
+    await body?.cancel()
+  } catch {
+    // The caller's primary result remains authoritative.
+  }
+}
+
+/** Best-effort cleanup for a response body after its reader has locked it. */
+async function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  try {
+    await reader.cancel()
+  } catch {
+    // The caller's primary result remains authoritative.
+  }
+}
+
+/** Read the decoded response stream without ever buffering more than the cap. */
+async function readBodyText(res: Response): Promise<BodyTextOutcome> {
+  if (res.body === null) return { ok: true, text: '' }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  const chunks: string[] = []
+  let bytes = 0
+  try {
+    while (true) {
+      const next = await reader.read()
+      if (next.done) {
+        chunks.push(decoder.decode())
+        return { ok: true, text: chunks.join('') }
+      }
+      bytes += next.value.byteLength
+      if (bytes > MAX_BODY_BYTES) {
+        await cancelReader(reader)
+        return { ok: false, error: `body exceeds the ${MAX_BODY_BYTES} byte cap` }
+      }
+      chunks.push(decoder.decode(next.value, { stream: true }))
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return { ok: false, error: `body read failed: ${reason}` }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 /** One fetch attempt outcome. */
 export type FetchOutcome =
   | { ok: true; res: Response; finalUrl: string }
@@ -95,9 +146,13 @@ export async function fetchGuarded(
     }
     if (REDIRECT_STATUSES.has(res.status)) {
       const location = res.headers.get('location')
-      void res.body?.cancel()
+      await cancelBody(res.body)
       if (location === null) return { ok: true, res, finalUrl: current }
-      current = new URL(location, parsed).toString()
+      try {
+        current = new URL(location, parsed).toString()
+      } catch {
+        return { ok: false, error: 'invalid redirect location' }
+      }
       continue
     }
     return { ok: true, res, finalUrl: current }
@@ -123,24 +178,28 @@ export async function readPage(
   base.status = res.status
   base.contentType = res.headers.get('content-type') ?? undefined
   if (!res.ok) {
+    await cancelBody(res.body)
     base.error = `HTTP ${res.status}`
     return base
   }
   const length = res.headers.get('content-length')
   if (length !== null && Number(length) > MAX_BODY_BYTES) {
+    await cancelBody(res.body)
     base.error = `body exceeds the ${MAX_BODY_BYTES} byte cap`
     return base
   }
   const contentType = base.contentType ?? ''
   if (!TEXT_TYPES.test(contentType) && contentType !== '') {
+    await cancelBody(res.body)
     base.error = `unsupported content type: ${contentType}`
     return base
   }
-  const body = await res.text()
-  if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
-    base.error = `body exceeds the ${MAX_BODY_BYTES} byte cap`
+  const bodyOutcome = await readBodyText(res)
+  if (!bodyOutcome.ok) {
+    base.error = bodyOutcome.error
     return base
   }
+  const body = bodyOutcome.text
   if (/html/i.test(contentType)) {
     base.title = extractTitle(body)
     const extracted = extractText(body, maxChars)

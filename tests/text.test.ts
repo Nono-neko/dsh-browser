@@ -24,6 +24,18 @@ describe('extractText', () => {
     expect(text).not.toContain('.a{}')
   })
 
+  it('strips every consecutive hidden-content tree', () => {
+    const html = '<script>first()</script><script>second()</script><style>.first{}</style><style>.second{}</style><p>visible</p>'
+    const { text } = extractText(html, 1000)
+    expect(text).toBe('visible')
+  })
+
+  it('strips nested hidden-content trees at their full depth', () => {
+    const html = '<template><template>inner</template>outer</template><p>visible</p>'
+    const { text } = extractText(html, 1000)
+    expect(text).toBe('visible')
+  })
+
   it('turns block boundaries into line breaks and bullets li items', () => {
     const html = '<ul><li>one</li><li>two</li></ul><p>after</p>'
     const { text } = extractText(html, 1000)

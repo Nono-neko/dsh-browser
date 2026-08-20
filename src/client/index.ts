@@ -28,7 +28,7 @@ import { subscribeOpenEvents } from './api.ts'
 import { PanelController } from './controller.ts'
 import { en, zh, type BrowserKey } from './locales.ts'
 import { mountPanel } from './mount.tsx'
-import { createTabPersist, readPersisted } from './persist.ts'
+import { bindTabPersistPagehide, createTabPersist, readPersisted } from './persist.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { initialState, makeTab, TabsStore } from './store.ts'
 import { setTranslator } from './translate.ts'
@@ -107,6 +107,7 @@ export function apply(ctx: ClientContext): void {
   const controller = new PanelController()
   const store = new TabsStore(() => settings().maxTabs)
   const persist = createTabPersist()
+  const disposePagehide = bindTabPersistPagehide(persist)
   const disposePersist = store.subscribe(() => {
     if (store.getSnapshot().root !== '') persist.save(store.getSnapshot())
   })
@@ -119,6 +120,10 @@ export function apply(ctx: ClientContext): void {
     const cwd = sessionId === undefined ? undefined : snapshot.byId[sessionId]?.cwd
     const root = typeof cwd === 'string' && cwd !== '' ? cwd : ''
     if (store.getSnapshot().root === root) return
+    // Commit every root's pending snapshot before a target root is read back;
+    // otherwise a rapid A -> B -> A switch could restore stale A and replace
+    // the newer in-memory pending value for that same key.
+    persist.flush()
     const persisted = readPersisted(root)
     if (persisted !== undefined && persisted.tabs.length > 0) {
       store.set({
@@ -142,6 +147,7 @@ export function apply(ctx: ClientContext): void {
 
   let disposeUi: (() => void) | undefined
   const syncUi = (): void => {
+    store.enforceLimit()
     if (settings().enabled && disposeUi === undefined) {
       disposeUi = ctx.effect(() => {
         const disposers: Array<() => void> = []
@@ -197,6 +203,7 @@ export function apply(ctx: ClientContext): void {
     disposeUi = undefined
     disposeSessions()
     disposePersist()
+    disposePagehide()
     persist.flush()
     persist.dispose()
   }, 'dsh-browser: wiring')

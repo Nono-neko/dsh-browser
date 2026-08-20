@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { normalizeAddress, displayLabel } from '../../core/url.ts'
+import { normalizeAddress, displayLabel, toProxyUrl } from '../../core/url.ts'
 import { START_URL, type BrowserTab, type TabsStore } from '../store.ts'
 import type { BrowserPanelDeps } from '../mount.tsx'
 import { StartPage } from './StartPage.tsx'
@@ -16,6 +16,15 @@ import css from './panel.module.css'
 interface BrowserPanelProps {
   store: TabsStore
   deps: BrowserPanelDeps
+}
+
+function isWorkspaceFileUrl(value: string): boolean {
+  try {
+    const url = new URL(value, window.location.href)
+    return url.origin === window.location.origin && url.pathname === '/api/dsh-browser/file'
+  } catch {
+    return false
+  }
 }
 
 export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
@@ -30,6 +39,27 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
     if (active !== undefined) seen.current.add(active.id)
     setDraft(active !== undefined && active.url !== START_URL ? active.url : '')
   }, [active?.id, active?.url])
+
+  // Links clicked inside a proxied iframe post their URL here instead of
+  // opening the system browser. _blank / window.open opens a new tab;
+  // ordinary links navigate the active tab.
+  useEffect(() => {
+    const handler = (event: MessageEvent): void => {
+      const data = event.data
+      if (data === null || typeof data !== 'object' || data.source !== 'dsh-browser') return
+      const url = typeof data.url === 'string' ? data.url : ''
+      if (url === '') return
+      if (data.kind === 'open') {
+        store.openTab(url)
+      } else if (data.kind === 'navigate') {
+        const current = store.activeTab()
+        if (current !== undefined) store.navigate(current.id, url)
+        else store.openTab(url)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [store])
 
   const submitAddress = (): void => {
     if (active === undefined) return
@@ -174,8 +204,9 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
                 <iframe
                   key={`${tab.id}:${tab.nonce}`}
                   className={css.frame}
-                  src={tab.url}
+                  src={toProxyUrl(tab.url)}
                   title={label(tab)}
+                  sandbox={isWorkspaceFileUrl(tab.url) ? '' : undefined}
                   allow="clipboard-write; fullscreen"
                   referrerPolicy="no-referrer-when-downgrade"
                 />

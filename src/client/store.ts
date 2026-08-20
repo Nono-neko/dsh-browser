@@ -79,7 +79,7 @@ export class TabsStore {
 
   /** Replace the whole state (root switch / restore) and notify once. */
   set(state: TabsState): void {
-    this.state = state
+    this.state = { ...state, tabs: this.limitTabs(state.tabs, state.activeId) }
     this.notify()
   }
 
@@ -141,14 +141,16 @@ export class TabsStore {
     const tab = this.state.tabs.find(entry => entry.id === id)
     if (tab === undefined || tab.index <= 0) return
     const index = tab.index - 1
-    this.replaceTab({ ...tab, url: tab.stack[index], index })
+    const url = tab.stack[index]
+    this.replaceTab({ ...tab, url, label: displayLabel(url), index })
   }
 
   forward(id: string): void {
     const tab = this.state.tabs.find(entry => entry.id === id)
     if (tab === undefined || tab.index >= tab.stack.length - 1) return
     const index = tab.index + 1
-    this.replaceTab({ ...tab, url: tab.stack[index], index })
+    const url = tab.stack[index]
+    this.replaceTab({ ...tab, url, label: displayLabel(url), index })
   }
 
   reload(id: string): void {
@@ -167,6 +169,14 @@ export class TabsStore {
     return tab !== undefined && tab.index < tab.stack.length - 1
   }
 
+  /** Apply the current live tab cap and notify only when tabs were removed. */
+  enforceLimit(): void {
+    const tabs = this.limitTabs(this.state.tabs, this.state.activeId)
+    if (tabs === this.state.tabs) return
+    this.state = { ...this.state, tabs }
+    this.notify()
+  }
+
   private replaceTab(next: BrowserTab): void {
     this.state = {
       ...this.state,
@@ -177,12 +187,20 @@ export class TabsStore {
 
   /** Drop the oldest tabs beyond the configured cap (never the active one). */
   private trim(): void {
-    const max = Math.max(2, this.maxTabs())
     const { tabs, activeId } = this.state
-    while (tabs.length > max) {
-      const oldest = tabs.find(tab => tab.id !== activeId) ?? tabs[0]
-      tabs.splice(tabs.indexOf(oldest), 1)
+    const limited = this.limitTabs(tabs, activeId)
+    if (limited !== tabs) this.state = { ...this.state, tabs: limited }
+  }
+
+  private limitTabs(tabs: BrowserTab[], activeId: string | undefined): BrowserTab[] {
+    const max = Math.max(2, this.maxTabs())
+    if (tabs.length <= max) return tabs
+    const limited = [...tabs]
+    while (limited.length > max) {
+      const index = limited.findIndex(tab => tab.id !== activeId)
+      limited.splice(index >= 0 ? index : 0, 1)
     }
+    return limited
   }
 
   /** A fresh start tab (used when the last real tab closes). */

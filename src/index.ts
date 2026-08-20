@@ -10,7 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
-import z from 'schemastery'
+import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
@@ -38,6 +38,8 @@ export const Config: z<Config> = z.object({
   defaultHome: z.string().default('https://www.bing.com'),
   maxTabs: z.number().step(1).min(2).max(30).default(10),
   allowPrivateAccess: z.boolean().default(false),
+  browserExecutable: z.string().default(''),
+  proxyServer: z.string().default(''),
 })
 
 /** Schema defaults, re-read for hand-built test contexts (the loader applies them normally). */
@@ -47,6 +49,8 @@ const DEFAULTS = {
   defaultHome: 'https://www.bing.com',
   maxTabs: 10,
   allowPrivateAccess: false,
+  browserExecutable: '',
+  proxyServer: '',
 }
 
 /** Order of the announcement section within the tool-guidance band. */
@@ -70,12 +74,16 @@ export function apply(ctx: Context, config?: Config): void {
     defaultHome: string
     maxTabs: number
     allowPrivateAccess: boolean
+    browserExecutable: string
+    proxyServer: string
   } => ({
     enabled: current().enabled ?? DEFAULTS.enabled,
     announceToAgent: current().announceToAgent ?? DEFAULTS.announceToAgent,
     defaultHome: current().defaultHome ?? DEFAULTS.defaultHome,
     maxTabs: current().maxTabs ?? DEFAULTS.maxTabs,
     allowPrivateAccess: current().allowPrivateAccess ?? DEFAULTS.allowPrivateAccess,
+    browserExecutable: current().browserExecutable ?? DEFAULTS.browserExecutable,
+    proxyServer: current().proxyServer ?? DEFAULTS.proxyServer,
   })
 
   const broadcaster = new OpenBroadcaster()
@@ -111,7 +119,11 @@ export function apply(ctx: Context, config?: Config): void {
       })
     }
     disposeRoutes = ctx.effect(
-      () => registerBrowserRoutes(ctx, createWorkspaceGate(ctx), broadcaster),
+      () => registerBrowserRoutes(ctx, createWorkspaceGate(ctx), broadcaster, {
+        executablePath: value.browserExecutable !== '' ? value.browserExecutable : undefined,
+        proxyServer: value.proxyServer !== '' ? value.proxyServer : undefined,
+        allowPrivate: value.allowPrivateAccess,
+      }),
       'dsh-browser: routes',
     )
     const tools = [

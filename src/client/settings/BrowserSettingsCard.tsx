@@ -225,6 +225,26 @@ export function BrowserSettingsCard(props: BrowserSettingsCardProps): JSX.Elemen
         editText={editText}
         resetField={resetField}
       />
+      <TextRow
+        field="browserExecutable"
+        label={t('settings.browserExecutable')}
+        hint={t('settings.browserExecutableHint')}
+        state={state.fields.browserExecutable}
+        writable={state.writable}
+        t={t}
+        editText={editText}
+        resetField={resetField}
+      />
+      <TextRow
+        field="proxyServer"
+        label={t('settings.proxyServer')}
+        hint={t('settings.proxyServerHint')}
+        state={state.fields.proxyServer}
+        writable={state.writable}
+        t={t}
+        editText={editText}
+        resetField={resetField}
+      />
 
       {state.dirty || state.saving || state.failed ? (
         <div className={css.footer}>

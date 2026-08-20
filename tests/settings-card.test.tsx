@@ -24,6 +24,8 @@ describe('BrowserSettingsCard', () => {
         allowPrivateAccess: { text: 'false', overridden: false, invalid: false },
         defaultHome: { text: 'https://www.bing.com', overridden: false, invalid: false },
         maxTabs: { text: '10', overridden: false, invalid: false },
+        browserExecutable: { text: '', overridden: false, invalid: false },
+        proxyServer: { text: '', overridden: false, invalid: false },
       },
     }
     const props = {

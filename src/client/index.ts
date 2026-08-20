@@ -187,6 +187,8 @@ export function apply(ctx: ClientContext): void {
       { field: 'allowPrivateAccess', kind: 'boolean' },
       { field: 'defaultHome', kind: 'text' },
       { field: 'maxTabs', kind: 'number' },
+      { field: 'browserExecutable', kind: 'text' },
+      { field: 'proxyServer', kind: 'text' },
     ])
     const disposeForm = (): void => { form.dispose() }
     return [disposeForm, ctx.slots.register({

@@ -206,7 +206,7 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
                   className={css.frame}
                   src={toProxyUrl(tab.url)}
                   title={label(tab)}
-                  sandbox={isWorkspaceFileUrl(tab.url) ? '' : undefined}
+                  sandbox={isWorkspaceFileUrl(tab.url) ? 'allow-scripts allow-same-origin' : undefined}
                   allow="clipboard-write; fullscreen"
                   referrerPolicy="no-referrer-when-downgrade"
                 />

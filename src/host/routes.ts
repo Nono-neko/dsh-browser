@@ -223,10 +223,14 @@ const MIME: Record<string, string> = {
 }
 
 /**
- * CSP for every served workspace document. Applying it uniformly also covers
- * active non-HTML formats such as SVG and XML when they are loaded in a frame.
+ * CSP for every served workspace document. `sandbox allow-scripts
+ * allow-same-origin` lets local static pages run their own JS (canvas
+ * animations, interactivity) while staying on the loopback origin so
+ * relative references injected via <base> resolve through the file route.
+ * Scripts are confined to 'self'; cross-origin fetch is allowed for
+ * ordinary API calls but the document cannot frame or navigate the host.
  */
-const DOCUMENT_CSP = "sandbox; default-src 'none'; img-src data: blob: http: https:; style-src 'unsafe-inline' http: https:; media-src data: blob: http: https:"
+const DOCUMENT_CSP = "sandbox allow-scripts allow-same-origin; default-src 'none'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline' http: https:; font-src 'self' data: http: https:; script-src 'self'; connect-src 'self' http: https:; media-src 'self' data: blob: http: https:"
 
 /** Resolve and verify a root-relative path against the gated workspace root. */
 async function resolveInside(canonicalRoot: string, root: string, rel: string): Promise<

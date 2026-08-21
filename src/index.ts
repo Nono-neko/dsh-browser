@@ -16,7 +16,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { createWorkspaceGate } from './host/gate.ts'
-import { OpenBroadcaster, registerBrowserRoutes } from './host/routes.ts'
+import { OpenBroadcaster, registerBrowserRoutes, normalizeProxyServer } from './host/routes.ts'
 import { browserOpenTool, browserReadTool, readPage } from './host/tools.ts'
 import type { BrowserConfig } from './core/types.ts'
 
@@ -121,7 +121,7 @@ export function apply(ctx: Context, config?: Config): void {
     disposeRoutes = ctx.effect(
       () => registerBrowserRoutes(ctx, createWorkspaceGate(ctx), broadcaster, {
         executablePath: value.browserExecutable !== '' ? value.browserExecutable : undefined,
-        proxyServer: value.proxyServer !== '' ? value.proxyServer : undefined,
+        proxyServer: normalizeProxyServer(value.proxyServer),
         allowPrivate: value.allowPrivateAccess,
       }),
       'dsh-browser: routes',

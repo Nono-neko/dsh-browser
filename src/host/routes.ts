@@ -38,6 +38,22 @@ const FILE_ROUTE = '/api/dsh-browser/file'
 
 const PROXY_ROUTE = '/api/dsh-browser/proxy'
 
+/**
+ * Normalize a user-supplied proxy server string into a form Chromium's
+ * --proxy-server flag accepts. Pure numbers are treated as a local HTTP
+ * proxy port; host:port without a scheme gets http:// prepended; schemes
+ * http/https/socks4/socks5 pass through unchanged. Empty/invalid returns
+ * undefined so the caller omits the flag entirely (system VPN / direct).
+ */
+export function normalizeProxyServer(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === '') return undefined
+  const trimmed = raw.trim()
+  if (trimmed === '') return undefined
+  if (/^\d+$/.test(trimmed)) return `http://127.0.0.1:${trimmed}`
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) return trimmed
+  return `http://${trimmed}`
+}
+
 interface FileTarget {
   root: string
   path: string
@@ -251,6 +267,24 @@ async function resolveInside(canonicalRoot: string, root: string, rel: string): 
 }
 
 /**
+ * Render a friendly HTML error page when Puppeteer fails to load a URL.
+ * Shown inside the panel iframe so the user sees what went wrong instead
+ * of a blank page (the old behaviour returned a JSON 502 that iframes
+ * render as empty).
+ */
+function renderErrorPage(url: string, message: string, proxy: string | undefined): string {
+  const escapedUrl = url.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+  const escapedMessage = message.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+  const proxyLine = proxy !== undefined
+    ? `<p class="hint">代理：<code>${proxy.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))}</code></p>`
+    : '<p class="hint">未设置代理（直连 / 系统 VPN）</p>'
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>加载失败</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}.card{max-width:560px;width:100%;background:#16213e;border-radius:12px;padding:32px;box-shadow:0 8px 32px rgba(0,0,0,.4)}h1{margin:0 0 8px;font-size:20px;color:#ff6b6b}.url{font-size:13px;color:#8892b0;word-break:break-all;margin-bottom:16px}.msg{background:#0f3460;border-left:3px solid #ff6b6b;padding:12px 16px;border-radius:4px;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word}.hint{margin:16px 0 0;font-size:13px;color:#8892b0}code{background:#0f3460;padding:2px 6px;border-radius:3px;font-size:12px}.tips{margin-top:20px;padding-top:16px;border-top:1px solid #0f3460;font-size:13px;color:#8892b0;line-height:1.8}.tips b{color:#e0e0e0}</style></head>
+<body><div class="card"><h1>页面加载失败</h1><div class="url">${escapedUrl}</div><div class="msg">${escapedMessage}</div>${proxyLine}
+<div class="tips"><b>常见原因：</b><br>· 代理地址格式错误（应为 http://127.0.0.1:端口 或 socks5://127.0.0.1:端口）<br>· 代理客户端未启动或端口不对<br>· 使用系统 VPN（TUN/全局）时应留空代理设置<br>· 目标网站不可达或超时</div></div></body></html>`
+}
+
+/**
  * Proxy handler: renders the target URL with a headless Chromium (Puppeteer)
  * so JavaScript-executed pages load correctly, strips the embedding
  * restriction headers, injects a <base> so relative resources resolve
@@ -284,7 +318,9 @@ async function handleProxy(
     rendered = await renderUrl(target, browserOptions)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    json(res, FAIL({ code: 'bad-request', message: `render failed: ${message}` }), 502)
+    const body = renderErrorPage(target, message, browserOptions.proxyServer)
+    res.writeHead(502, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' })
+    res.end(body)
     return
   }
 

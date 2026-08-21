@@ -180,6 +180,9 @@ export function apply(ctx: ClientContext): void {
 
   // Plugin configuration card: one staged form over the dsh-browser settings
   // namespace, contributed to the official Plugins section.
+  // COMPAT: web build declares settings.plugin.item as a list slot (needs id);
+  // Desktop build declares it as a keyed slot (needs key). Pass both so either
+  // runtime accepts the registration.
   ctx.slots.inject('settings.plugin.item', () => {
     const form = new BrowserSettingsForm<BrowserSettings>(settingsScope, [
       { field: 'enabled', kind: 'boolean' },
@@ -194,10 +197,11 @@ export function apply(ctx: ClientContext): void {
     return [disposeForm, ctx.slots.register({
       name: 'settings.plugin.item',
       id: 'dsh-browser',
+      key: 'dsh-browser',
       order: 90,
       locale: NS,
       inject: () => form.injectFace(),
-    }, BrowserSettingsCard)]
+    } as any, BrowserSettingsCard)]
   })
 
   ctx.effect(() => () => {

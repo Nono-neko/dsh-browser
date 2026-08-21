@@ -1,75 +1,128 @@
 /**
- * Plugin settings card styles. Rides the dsh --dsw-* tokens so the card
- * follows the active theme; layout follows the official plugin-card look
- * (title + description header, staged rows, save/discard footer).
+ * Plugin settings card styles. Collapsible disclosure matching the official
+ * PluginCard look (header button + disclosed body + save/discard footer).
+ * Rides the dsh --dsw-* tokens so the card follows the active theme.
  */
 
 .card {
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
   border: 1px solid var(--dsw-alias-border-l2, #d6d9de);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-base, #ffffff);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-3, #ffffff);
   color: var(--dsw-alias-label-primary, #1f2329);
   font-family: var(--dsw-font-family, inherit);
   font-size: 13px;
+  transition: border-color 0.16s, background 0.16s;
 }
+
+.card:hover {
+  border-color: var(--dsw-alias-label-dimmed, #8a919f);
+}
+
+.cardOpen {
+  background: var(--dsw-alias-bg-layer-2, #f5f6f8);
+  border-color: var(--dsw-alias-label-dimmed, #8a919f);
+}
+
+/* --- Header (clickable disclosure button) --- */
 
 .header {
+  width: 100%;
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
 }
 
-.headerCopy {
+.header:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #4d6bfe);
+  outline-offset: -2px;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  gap: 4px;
 }
 
-.title {
-  margin: 0;
-  font-size: 14px;
+.name {
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-primary, #1f2329);
 }
 
 .description {
-  margin: 0;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--dsw-alias-label-tertiary, #8a919f);
 }
 
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
+  transition: transform 0.16s;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* Carried on the header so a collapsed card still says it holds edits. */
 .pending {
   flex: none;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-2, #eef0f4);
-  color: var(--dsw-alias-label-secondary, #5f6672);
+  border-radius: 999px;
+  padding: 1px 8px;
   font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--dsw-alias-bg-module-platform, #eef0f4);
+  color: var(--dsw-alias-label-secondary, #5f6672);
+}
+
+/* --- Body (disclosed content) --- */
+
+.body {
+  border-top: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+  margin: 0 16px;
+  padding-bottom: 8px;
 }
 
 .readOnly {
-  margin: 0;
+  margin: 12px 0 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-error, #d03050);
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
 }
 
 .notExposed {
   margin: 0;
+  padding: 14px 16px;
   font-size: 13px;
   color: var(--dsw-alias-label-tertiary, #8a919f);
 }
+
+/* --- Form rows --- */
 
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 0;
+  padding: 10px 0;
   border-top: 1px solid var(--dsw-alias-border-l2, #d6d9de);
 }
 
@@ -186,47 +239,62 @@
   cursor: default;
 }
 
+/* --- Footer (save/discard) --- */
+
 .footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding-top: 4px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--dsw-alias-border-l2, #d6d9de);
 }
 
 .saveFailed {
-  margin-right: auto;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--dsw-alias-label-error, #d03050);
 }
 
-.discardButton {
-  padding: 5px 14px;
-  border: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+.discardButton,
+.saveButton {
+  appearance: none;
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary, #5f6672);
+  padding: 5px 14px;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
   cursor: pointer;
+}
+
+.discardButton {
+  border-color: var(--dsw-alias-border-l2, #d6d9de);
+  background: none;
+  color: var(--dsw-alias-label-secondary, #5f6672);
 }
 
 .discardButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.06));
+  color: var(--dsw-alias-label-primary, #1f2329);
+  border-color: var(--dsw-alias-label-dimmed, #8a919f);
 }
 
 .saveButton {
-  padding: 5px 16px;
-  border: none;
-  border-radius: 8px;
-  background: var(--dsw-alias-state-business-primary, #4d6bfe);
-  color: #ffffff;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+  background: var(--dsw-alias-label-primary, #1f2329);
+  color: var(--dsw-alias-bg-layer-3, #ffffff);
 }
 
+.discardButton:disabled,
 .saveButton:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: default;
+}
+
+.discardButton:focus-visible,
+.saveButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #4d6bfe);
+  outline-offset: 1px;
 }

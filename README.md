@@ -4,23 +4,40 @@ English | [中文](README.zh.md)
 
 > Embedded browser for the DSH Web GUI: browse the web and your workspace files
 > inside the chat interface — multi-tab, address bar, per-workspace tab
-> persistence — plus agent tools (`browser_open`, `browser_read`).
+> persistence — plus agent tools (`browser_open`, `browser_read`). Pages are
+> rendered by a headless Chromium (Puppeteer) on the host, so sites that send
+> `X-Frame-Options` load correctly.
 
 An external plugin package for DeepSeek Harness (DSH). It is a single
 dual-face cordis bundle: the host half owns the agent tools, the
-`/api/dsh-browser` route family (SSE open-event stream + workspace file
-listing/serving), the settings namespace, and the system-prompt announcement;
-the browser half renders the sidebar entry, the multi-tab panel, and the
-plugin settings card. Hot-pluggable — mounted via
+`/api/dsh-browser` route family (Puppeteer page proxy + SSE open-event stream
++ workspace file listing/serving), the settings namespace, and the
+system-prompt announcement; the browser half renders the sidebar entry, the
+multi-tab panel, and the plugin settings card. Hot-pluggable — mounted via
 `dsh plugin --profile <name> add link:<repo>`, no dsh source changes.
+
+## Prerequisites
+
+A Chromium-based browser must be installed on the host machine (Chrome,
+Edge, or Chromium). The plugin auto-detects the executable on Windows, macOS,
+and Linux; you can also set an explicit path in the settings card. The plugin
+uses `puppeteer-core` (not `puppeteer`), so it never downloads its own
+Chromium.
 
 ## What it does
 
 - **Entry**: a "Browser" row in the sidebar, below the New Session button.
 - **Panel**: takes over the center column with a tab strip, a toolbar
   (back / forward / reload / home / open-in-system-browser), an address bar
-  (URL or search, Enter opens), and an iframe content area. Inactive tabs stay
+  (URL or search, Enter opens), and an iframe content area. Each page is
+  rendered by a shared headless Chromium on the host — the proxy route waits
+  for `networkidle`, reads the fully-executed DOM, injects a `<base>` and a
+  link-interception script, and returns it to the iframe. Inactive tabs stay
   mounted and stateful; iframes lazy-load on first activation.
+- **Link interception**: clicks on `http(s)` links inside a proxied page are
+  caught and posted to the panel — `target="_blank"` / `window.open` opens a
+  new tab, ordinary links navigate the current tab. Nothing ever pops the
+  system browser.
 - **Tabs per workspace**: the tab set is persisted per project root
   (localStorage, debounced + flushed on page hide). Switching sessions swaps
   the whole tab set; switching back restores it. A configurable cap (default
@@ -33,10 +50,10 @@ plugin settings card. Hot-pluggable — mounted via
 - **Agent tools**: `browser_open` pushes a URL into the panel (a new tab opens
   and the panel gains focus); `browser_read` fetches a page from the host and
   returns extracted readable text (static-HTML approximation, no JavaScript).
-- **Settings card**: the official Plugins settings section gets a
-  "Embedded browser" card (enable, agent announcement, home page, tab cap,
-  private-address override) with staged edits, save/discard, and
-  inherit/reset semantics.
+- **Settings card**: the official Plugins settings section gets an
+  "Embedded browser" card with staged edits, save/discard, and inherit/reset
+  semantics. Fields: enable, agent announcement, home page, tab cap,
+  private-address override, browser executable path, proxy server.
 - **Agent announcement**: a system-prompt section tells every agent the plugin
   exists, what its tools do, and its limits (same mechanism dsh-ssh uses).
 
@@ -52,7 +69,77 @@ dsh plugin --profile <name> add @nono-neko/dsh-browser
 
 Restart `dsh web`; the sidebar entry appears. The web profile needs the
 `@deepseek-ai/*` client packages the bundle injects (any rc.6 web deployment
-has them).
+has them). Make sure a Chromium-based browser is installed on the host.
+
+## Configuration
+
+The plugin reads its settings from a layered source: schema defaults, then the
+plugin's `cordis.yml` entry (composition base), then the user settings
+document. All fields are optional.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Mount the sidebar entry, tools, and proxy routes. |
+| `announceToAgent` | boolean | `true` | Inject a system-prompt section telling agents about `browser_open` / `browser_read`. |
+| `defaultHome` | string | `https://www.bing.com` | URL loaded by the new-tab / home button. |
+| `maxTabs` | number | `10` | Per-workspace tab cap; oldest inactive tab is trimmed. |
+| `allowPrivateAccess` | boolean | `false` | Let `browser_read` fetch private / loopback addresses. |
+| `browserExecutable` | string | auto-detect | Absolute path to a Chromium-based browser (Chrome / Edge / Chromium). |
+| `proxyServer` | string | empty | Route Puppeteer traffic through a proxy, e.g. `http://127.0.0.1:7890`. |
+
+### Option A — Settings card in the DSH GUI
+
+The plugin ships a settings card under **Settings → Plugins → Embedded browser**
+with staged edits, save/discard, and inherit/reset semantics.
+
+> **DSH whitelist requirement.** As of DSH rc.6, the settings API only exposes
+> namespaces in a hard-coded allowlist inside
+> `packages/host/apiproxy/src/api-proxy.ts` (`WEB_SETTINGS_NAMESPACES`). An
+> external plugin's namespace is filtered out even after it registers
+> correctly, so the card renders "not exposed" until you add `'dsh-browser'`
+> to that array and restart `dsh web`. The DSH team has noted that moving this
+> declaration to `settings.register()` so plugins can self-expose is deferred
+> work.
+
+Edit `packages/host/apiproxy/src/api-proxy.ts` in your DSH checkout:
+
+```ts
+const WEB_SETTINGS_NAMESPACES = [
+  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation',
+  'ui-theme', 'web-search-deepseek', 'dsh-browser',  // <-- add this
+] as const
+```
+
+DSH runs through `tsx`, so no rebuild is needed — restart `dsh web` and the
+card becomes editable.
+
+### Option B — Config file only (no DSH source changes)
+
+If you do not want to patch DSH, set the same fields directly. Two layers are
+available:
+
+**Plugin entry config** (`cordis.yml` or your profile's plugin config) — the
+composition base, applies to every user of that profile:
+
+```yaml
+plugins:
+  dsh-browser:
+    defaultHome: https://www.google.com
+    maxTabs: 20
+    proxyServer: http://127.0.0.1:7890
+```
+
+**User settings document** (`~/.dsh/settings.yaml`) — per-user overrides that
+layer on top of the entry config:
+
+```yaml
+dsh-browser:
+  browserExecutable: C:\Program Files\Google\Chrome\Application\chrome.exe
+  allowPrivateAccess: true
+```
+
+The settings card stays read-only ("not exposed") in this mode, but every field
+is honored from the files above.
 
 ## Development
 
@@ -73,38 +160,51 @@ services.
 
 ## Security model
 
-- **Loopback fence**: every `/api/dsh-browser` route (SSE included) refuses
-  non-loopback clients (socket address + Host header + same-origin markers).
-  A LAN-exposed dsh web cannot serve workspace files or the event stream to
-  unpaired devices.
+- **Loopback fence**: every `/api/dsh-browser` route (proxy, SSE, file)
+  refuses non-loopback clients (socket address + Host header + same-origin
+  markers). A LAN-exposed dsh web cannot serve workspace files or the proxy
+  to unpaired devices.
 - **Workspace gate**: file listing and serving canonicalize the requested root
   (realpath) and require it to be a registered workspace or inside one;
   every requested path is re-checked after resolution, so symlinks cannot
   escape the root.
-- **Served HTML sandbox**: previewed HTML is served with
+- **Served HTML sandbox**: workspace-previewed HTML is served with
   `Content-Security-Policy: sandbox` — scripts never execute in the GUI
   origin (which holds the session's loopback API access).
+- **Proxied pages are not sandboxed**: the Puppeteer-rendered HTML is returned
+  without CSP / X-Frame-Options so it can render in the panel iframe. The
+  loopback fence is the security boundary — only local clients can reach the
+  proxy route. Proxied pages cannot access the GUI origin's APIs because they
+  are served from a different path and the browser's same-origin policy
+  applies to the iframe content.
 - **SSRF guard on `browser_read`**: the target hostname is resolved through
   DNS before the request leaves the process and every address must be public
   (private/loopback/link-local/reserved ranges are refused). Redirects are
-  followed manually and each hop is re-checked, so a public URL that
-  redirects to an internal address cannot bypass the guard. The
-  `allowPrivateAccess` setting is an explicit override; the risk is yours.
-- **Size/time caps**: bodies over 2 MB answer an error before being read;
-  served workspace files over 64 MB are refused; each fetch hop times out
-  after 15 seconds.
+  followed manually and each hop is re-checked. The `allowPrivateAccess`
+  setting is an explicit override; the risk is yours.
+- **Proxy route uses Puppeteer**: the headless Chromium fetches the page, so
+  the SSRF guard from `browser_read` does not apply to the panel proxy. The
+  `proxyServer` setting lets you route browsing traffic through a local VPN /
+  proxy.
+- **Size/time caps**: `browser_read` bodies over 2 MB answer an error before
+  being read; served workspace files over 64 MB are refused; each Puppeteer
+  render times out after 30 seconds.
 
 ## Limitations
 
-- The panel embeds pages in an iframe: sites that send
-  `X-Frame-Options` / CSP `frame-ancestors` refuse to load. The start page,
-  the address bar, and `browser_read` keep working for those sites.
-- Back/forward covers URLs entered through the address bar; in-page clicks
-  inside a cross-origin iframe are invisible to the panel (the parent cannot
-  read the iframe's location).
-- `browser_read` sees only the static HTML: JavaScript-rendered pages come
+- **No persistent login**: each proxied page opens a fresh Puppeteer page and
+  closes it after rendering. Cookies and login state are not retained between
+  requests, so sites that require authentication will show a logged-out view.
+- **GET only**: the panel proxy supports GET requests. Form submissions (POST)
+  and file uploads are not proxied — they will execute inside the iframe and
+  may be blocked by the target site's `X-Frame-Options`.
+- **JavaScript-rendered navigation**: the initial page is fully rendered by
+  Puppeteer, but subsequent in-page navigation (SPA routing, form posts)
+  happens inside the iframe and may hit `X-Frame-Options` on the new URL.
+  Ordinary `<a>` links are intercepted and re-proxied.
+- **`browser_read` sees only static HTML**: JavaScript-rendered pages come
   back without their client-side content, and it cannot use your logins.
-- Browsing consumes real network traffic.
+- **Browsing consumes real network traffic** on the host machine.
 
 ## License
 

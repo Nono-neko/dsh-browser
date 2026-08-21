@@ -18,15 +18,6 @@ interface StartPageProps {
   onOpenFile: (url: string) => void
 }
 
-/** Static quick links (scheme-less domain bookmarks). */
-const QUICK_LINKS: Array<{ label: string; url: string }> = [
-  { label: 'Bing', url: 'https://www.bing.com' },
-  { label: 'GitHub', url: 'https://github.com' },
-  { label: 'MDN', url: 'https://developer.mozilla.org' },
-  { label: 'Wikipedia', url: 'https://www.wikipedia.org' },
-  { label: 'npm', url: 'https://www.npmjs.com' },
-]
-
 export function StartPage({ root, t, onNavigate, onOpenFile }: StartPageProps): JSX.Element {
   const [query, setQuery] = useState('')
   const [path, setPath] = useState('')
@@ -74,22 +65,6 @@ export function StartPage({ root, t, onNavigate, onOpenFile }: StartPageProps): 
         />
         <button type="button" className={css.goButton} onClick={submit}>{t('start.go')}</button>
       </div>
-
-      <section className={css.startSection}>
-        <h3 className={css.startHeading}>{t('start.quickLinks')}</h3>
-        <div className={css.quickLinks}>
-          {QUICK_LINKS.map(link => (
-            <button
-              key={link.url}
-              type="button"
-              className={css.quickLink}
-              onClick={() => { onNavigate(link.url) }}
-            >
-              {link.label}
-            </button>
-          ))}
-        </div>
-      </section>
 
       <section className={css.startSection}>
         <h3 className={css.startHeading}>{t('start.workspace')}</h3>

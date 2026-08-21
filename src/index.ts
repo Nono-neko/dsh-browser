@@ -9,7 +9,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -139,15 +139,27 @@ export function apply(ctx: Context, config?: Config): void {
     )
   }
 
-  installSettingsSection(ctx, BROWSER_SETTINGS_NAMESPACE, Config, config ?? {}, {
-    setSource: (source) => {
-      current = source
+  // Register the settings namespace directly on the host settings service.
+  // We bypass installSettingsSection because its ctx.inject(["settings"], ...)
+  // creates a child context whose effect lifecycle disposes immediately after
+  // the callback runs, deleting the registration before describe() can see it.
+  const settings = ctx.get('settings') as
+    | {
+        register: (ns: string, schema: unknown, opts: { base?: unknown }) => { get: () => Config; watch: (cb: () => void) => () => void }
+      }
+    | undefined
+  if (settings !== undefined) {
+    const scope = settings.register(BROWSER_SETTINGS_NAMESPACE, Config, { base: config ?? {} })
+    current = () => scope.get()
+    const disposeWatch = scope.watch(() => { sync() })
+    ctx.effect(() => () => {
+      disposeWatch()
+      current = () => config ?? {}
       sync()
-    },
-    onChange: sync,
-  })
+    }, 'dsh-browser: settings-watch')
+  }
 
   // Initial registration from the composition entry (covers deployments with
-  // no settings service, whose installSettingsSection never fires its hooks).
+  // no settings service, where the register branch above is skipped).
   sync()
 }

@@ -36,11 +36,17 @@ describe('BrowserSettingsCard', () => {
       resetField: () => {},
       save: () => {},
       discard: () => {},
+      refresh: () => {},
     } as unknown as BrowserSettingsCardProps
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
     act(() => { root.render(createElement(BrowserSettingsCard, props)) })
+
+    // Card is collapsed by default; click the header to disclose the form.
+    const header = host.querySelector('button[aria-expanded="false"]')
+    expect(header).not.toBeNull()
+    act(() => { (header as HTMLButtonElement).click() })
 
     const inherit = Array.from(host.querySelectorAll('button'))
       .find(button => button.textContent === 'settings.inherit')

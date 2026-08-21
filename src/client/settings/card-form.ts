@@ -85,6 +85,7 @@ export class BrowserSettingsForm<T extends object> {
       resetField: (field: string) => { this.resetField(field) },
       save: () => { void this.save() },
       discard: () => { this.discard() },
+      refresh: () => { void (this.scope as unknown as { load: () => Promise<void> }).load() },
     }
   }
 
@@ -232,6 +233,7 @@ export interface BrowserSettingsActions {
   resetField: (field: string) => void
   save: () => void
   discard: () => void
+  refresh: () => void
 }
 
 function formatValue(kind: CardFieldKind, value: unknown): string {

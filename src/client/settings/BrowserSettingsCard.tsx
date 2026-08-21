@@ -4,9 +4,14 @@
  * shell) and renders the staged form over the `dsh-browser` settings
  * namespace. The slot type is declared here with the shell's shape so this
  * standalone package can register without depending on the shell package.
+ *
+ * Layout mirrors the official PluginCard: a clickable header (name +
+ * description + chevron) that discloses the staged form and save/discard
+ * footer in place. Collapse state is card-local.
  * @module dsh-browser/client/settings/BrowserSettingsCard
  */
 
+import { useEffect, useState } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BrowserSettingsActions, CardState } from './card-form.ts'
 import css from './settings-card.module.css'
@@ -143,130 +148,158 @@ function TextRow(props: {
   )
 }
 
+/** Simple chevron icon (inline SVG to avoid an icon-package dependency). */
+function Chevron({ className }: { className?: string }): JSX.Element {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M3.5 5.25L7 8.75L10.5 5.25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /**
- * Render the plugin card.
+ * Render the plugin card as a collapsible disclosure matching the official
+ * PluginCard look.
  * @param props - locale copy, the card snapshot, and its form actions.
  * @returns the card.
  */
 export function BrowserSettingsCard(props: BrowserSettingsCardProps): JSX.Element {
-  const { t, useBrowserSettingsCard, editText, setBoolean, resetField, save, discard } = props
+  const { t, useBrowserSettingsCard, editText, setBoolean, resetField, save, discard, refresh } = props
   const state = useBrowserSettingsCard(s => s)
+  const [open, setOpen] = useState(false)
+
+  // External plugins register their settings namespace after the client's
+  // initial settings.describe() has already run, and namespace registration
+  // does not emit settings/document-updated. Re-fetch on mount so the card
+  // sees the namespace once the host has registered it.
+  useEffect(() => { refresh() }, [refresh])
 
   if (state.status === 'unavailable') {
     return (
-      <div className={css.card}>
+      <li className={css.card}>
         <p className={css.notExposed}>{t('settings.notExposed')}</p>
-      </div>
+      </li>
     )
   }
   if (state.status === 'loading') {
-    return <div className={css.card} />
+    return <li className={css.card} />
   }
 
+  const title = t('settings.title')
+  const blocked = !state.dirty || state.invalid || state.saving
+
   return (
-    <div className={css.card}>
-      <div className={css.header}>
-        <div className={css.headerCopy}>
-          <h3 className={css.title}>{t('settings.title')}</h3>
-          <p className={css.description}>{t('settings.description')}</p>
-        </div>
+    <li className={`${css.card} ${open ? css.cardOpen : ''}`}>
+      <button
+        type="button"
+        className={css.header}
+        aria-expanded={open}
+        aria-label={`${open ? t('settings.collapse') : t('settings.expand')}: ${title}`}
+        onClick={() => { setOpen(!open) }}
+      >
+        <span className={css.headText}>
+          <span className={css.name}>{title}</span>
+          <span className={css.description}>{t('settings.description')}</span>
+        </span>
         {state.dirty ? <span className={css.pending}>{t('settings.unsaved')}</span> : null}
-      </div>
+        <Chevron className={`${css.chevron} ${open ? css.chevronOpen : ''}`} />
+      </button>
+      {open ? (
+        <div className={css.body}>
+          {state.writable ? null : <p className={css.readOnly}>{t('settings.readOnly')}</p>}
 
-      {state.writable ? null : <p className={css.readOnly}>{t('settings.readOnly')}</p>}
+          <BooleanRow
+            field="enabled"
+            label={t('settings.enabled')}
+            hint={t('settings.enabledHint')}
+            state={state.fields.enabled}
+            writable={state.writable}
+            t={t}
+            setBoolean={setBoolean}
+            resetField={resetField}
+          />
+          <BooleanRow
+            field="announceToAgent"
+            label={t('settings.announceToAgent')}
+            hint={t('settings.announceToAgentHint')}
+            state={state.fields.announceToAgent}
+            writable={state.writable}
+            t={t}
+            setBoolean={setBoolean}
+            resetField={resetField}
+          />
+          <BooleanRow
+            field="allowPrivateAccess"
+            label={t('settings.allowPrivate')}
+            hint={t('settings.allowPrivateHint')}
+            state={state.fields.allowPrivateAccess}
+            writable={state.writable}
+            t={t}
+            setBoolean={setBoolean}
+            resetField={resetField}
+          />
+          <TextRow
+            field="defaultHome"
+            label={t('settings.defaultHome')}
+            hint={t('settings.defaultHomeHint')}
+            state={state.fields.defaultHome}
+            writable={state.writable}
+            t={t}
+            editText={editText}
+            resetField={resetField}
+          />
+          <TextRow
+            field="maxTabs"
+            label={t('settings.maxTabs')}
+            hint={t('settings.maxTabsHint')}
+            state={state.fields.maxTabs}
+            writable={state.writable}
+            t={t}
+            editText={editText}
+            resetField={resetField}
+          />
+          <TextRow
+            field="browserExecutable"
+            label={t('settings.browserExecutable')}
+            hint={t('settings.browserExecutableHint')}
+            state={state.fields.browserExecutable}
+            writable={state.writable}
+            t={t}
+            editText={editText}
+            resetField={resetField}
+          />
+          <TextRow
+            field="proxyServer"
+            label={t('settings.proxyServer')}
+            hint={t('settings.proxyServerHint')}
+            state={state.fields.proxyServer}
+            writable={state.writable}
+            t={t}
+            editText={editText}
+            resetField={resetField}
+          />
 
-      <BooleanRow
-        field="enabled"
-        label={t('settings.enabled')}
-        hint={t('settings.enabledHint')}
-        state={state.fields.enabled}
-        writable={state.writable}
-        t={t}
-        setBoolean={setBoolean}
-        resetField={resetField}
-      />
-      <BooleanRow
-        field="announceToAgent"
-        label={t('settings.announceToAgent')}
-        hint={t('settings.announceToAgentHint')}
-        state={state.fields.announceToAgent}
-        writable={state.writable}
-        t={t}
-        setBoolean={setBoolean}
-        resetField={resetField}
-      />
-      <BooleanRow
-        field="allowPrivateAccess"
-        label={t('settings.allowPrivate')}
-        hint={t('settings.allowPrivateHint')}
-        state={state.fields.allowPrivateAccess}
-        writable={state.writable}
-        t={t}
-        setBoolean={setBoolean}
-        resetField={resetField}
-      />
-      <TextRow
-        field="defaultHome"
-        label={t('settings.defaultHome')}
-        hint={t('settings.defaultHomeHint')}
-        state={state.fields.defaultHome}
-        writable={state.writable}
-        t={t}
-        editText={editText}
-        resetField={resetField}
-      />
-      <TextRow
-        field="maxTabs"
-        label={t('settings.maxTabs')}
-        hint={t('settings.maxTabsHint')}
-        state={state.fields.maxTabs}
-        writable={state.writable}
-        t={t}
-        editText={editText}
-        resetField={resetField}
-      />
-      <TextRow
-        field="browserExecutable"
-        label={t('settings.browserExecutable')}
-        hint={t('settings.browserExecutableHint')}
-        state={state.fields.browserExecutable}
-        writable={state.writable}
-        t={t}
-        editText={editText}
-        resetField={resetField}
-      />
-      <TextRow
-        field="proxyServer"
-        label={t('settings.proxyServer')}
-        hint={t('settings.proxyServerHint')}
-        state={state.fields.proxyServer}
-        writable={state.writable}
-        t={t}
-        editText={editText}
-        resetField={resetField}
-      />
-
-      {state.dirty || state.saving || state.failed ? (
-        <div className={css.footer}>
-          {state.failed ? <span className={css.saveFailed}>{t('settings.saveFailed')}</span> : null}
-          <button
-            type="button"
-            className={css.discardButton}
-            disabled={state.saving}
-            onClick={discard}
-          >
-            {t('settings.discard')}
-          </button>
-          <button
-            type="button"
-            className={css.saveButton}
-            disabled={state.saving || state.invalid || !state.writable}
-            onClick={save}
-          >
-            {state.saving ? t('settings.saving') : t('settings.save')}
-          </button>
+          <div className={css.footer}>
+            {state.failed ? <span className={css.saveFailed}>{t('settings.saveFailed')}</span> : null}
+            <button
+              type="button"
+              className={css.discardButton}
+              disabled={!state.dirty || state.saving}
+              onClick={discard}
+            >
+              {t('settings.discard')}
+            </button>
+            <button
+              type="button"
+              className={css.saveButton}
+              disabled={blocked}
+              onClick={save}
+            >
+              {state.saving ? t('settings.saving') : t('settings.save')}
+            </button>
+          </div>
         </div>
       ) : null}
-    </div>
+    </li>
   )
 }

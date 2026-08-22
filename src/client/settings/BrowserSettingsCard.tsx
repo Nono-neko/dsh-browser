@@ -13,7 +13,7 @@
 
 import { useEffect, useState } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
-import type { BrowserSettingsActions, CardState } from './card-form.ts'
+import type { BrowserSettingsActions, CardState, BrowserSettingsForm } from './card-form.ts'
 import css from './settings-card.module.css'
 
 /** The card's locale-bound translate (namespace 'dsh-browser'). */
@@ -301,5 +301,156 @@ export function BrowserSettingsCard(props: BrowserSettingsCardProps): JSX.Elemen
         </div>
       ) : null}
     </li>
+  )
+}
+
+/**
+ * Module-level form for the Desktop settings.section variant. settings.section
+ * does not support the `inject` option, so the registrant stashes the form
+ * here and the component reads it directly, subscribing to form.store via
+ * useSyncExternalStore.
+ */
+let desktopForm: BrowserSettingsForm<any> | undefined
+
+/** Called by the client entry when registering the Desktop settings.section. */
+export function setDesktopForm(form: BrowserSettingsForm<any>): void {
+  desktopForm = form
+}
+
+/** Clear on unload to avoid stale state across HMR/re-registration. */
+export function clearDesktopForm(): void {
+  desktopForm = undefined
+}
+
+/**
+ * Standalone settings page variant for the Desktop build's settings.section
+ * slot. Renders the same staged form directly in a column (no collapsible
+ * card chrome), because the section nav already provides the title.
+ */
+export function BrowserSettingsPage(props: any): JSX.Element {
+  const form = desktopForm
+  if (form === undefined) {
+    return (
+      <div className={css.card}>
+        <p className={css.notExposed}>表单未初始化</p>
+      </div>
+    )
+  }
+  const { t } = props
+  const [state, setState] = useState(() => form.store.getSnapshot())
+
+  useEffect(() => {
+    const unsubscribe = form.store.subscribe(() => {
+      setState(form.store.getSnapshot())
+    })
+    return unsubscribe
+  }, [form])
+
+  if (state.status === 'unavailable') {
+    return (
+      <div className={css.card}>
+        <p className={css.notExposed}>{t('settings.notExposed')}</p>
+      </div>
+    )
+  }
+  if (state.status === 'loading') {
+    return <div className={css.card}><p style={{ color: '#888', padding: '14px 16px' }}>加载中...</p></div>
+  }
+
+  return (
+    <div className={css.card}>
+      {state.writable ? null : <p className={css.readOnly}>{t('settings.readOnly')}</p>}
+
+      <BooleanRow
+        field="enabled"
+        label={t('settings.enabled')}
+        hint={t('settings.enabledHint')}
+        state={state.fields.enabled}
+        writable={state.writable}
+        t={t}
+        setBoolean={(field, value) => form.setBoolean(field, value)}
+        resetField={(field) => form.resetField(field)}
+      />
+      <BooleanRow
+        field="announceToAgent"
+        label={t('settings.announceToAgent')}
+        hint={t('settings.announceToAgentHint')}
+        state={state.fields.announceToAgent}
+        writable={state.writable}
+        t={t}
+        setBoolean={(field, value) => form.setBoolean(field, value)}
+        resetField={(field) => form.resetField(field)}
+      />
+      <BooleanRow
+        field="allowPrivateAccess"
+        label={t('settings.allowPrivate')}
+        hint={t('settings.allowPrivateHint')}
+        state={state.fields.allowPrivateAccess}
+        writable={state.writable}
+        t={t}
+        setBoolean={(field, value) => form.setBoolean(field, value)}
+        resetField={(field) => form.resetField(field)}
+      />
+      <TextRow
+        field="defaultHome"
+        label={t('settings.defaultHome')}
+        hint={t('settings.defaultHomeHint')}
+        state={state.fields.defaultHome}
+        writable={state.writable}
+        t={t}
+        editText={(field, text) => form.editText(field, text)}
+        resetField={(field) => form.resetField(field)}
+      />
+      <TextRow
+        field="maxTabs"
+        label={t('settings.maxTabs')}
+        hint={t('settings.maxTabsHint')}
+        state={state.fields.maxTabs}
+        writable={state.writable}
+        t={t}
+        editText={(field, text) => form.editText(field, text)}
+        resetField={(field) => form.resetField(field)}
+      />
+      <TextRow
+        field="browserExecutable"
+        label={t('settings.browserExecutable')}
+        hint={t('settings.browserExecutableHint')}
+        state={state.fields.browserExecutable}
+        writable={state.writable}
+        t={t}
+        editText={(field, text) => form.editText(field, text)}
+        resetField={(field) => form.resetField(field)}
+      />
+      <TextRow
+        field="proxyServer"
+        label={t('settings.proxyServer')}
+        hint={t('settings.proxyServerHint')}
+        state={state.fields.proxyServer}
+        writable={state.writable}
+        t={t}
+        editText={(field, text) => form.editText(field, text)}
+        resetField={(field) => form.resetField(field)}
+      />
+
+      <div className={css.footer}>
+        {state.failed ? <span className={css.saveFailed}>{t('settings.saveFailed')}</span> : null}
+        <button
+          type="button"
+          className={css.discardButton}
+          disabled={!state.dirty || state.saving}
+          onClick={() => form.discard()}
+        >
+          {t('settings.discard')}
+        </button>
+        <button
+          type="button"
+          className={css.saveButton}
+          disabled={!state.dirty || state.invalid || state.saving}
+          onClick={() => { void form.save() }}
+        >
+          {state.saving ? t('settings.saving') : t('settings.save')}
+        </button>
+      </div>
+    </div>
   )
 }

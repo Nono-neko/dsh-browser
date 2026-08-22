@@ -4,6 +4,13 @@
  * Rides the dsh --dsw-* tokens so the card follows the active theme.
  */
 
+/* Standalone page wrapper for the Desktop settings.section variant. */
+.page {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
 .card {
   list-style: none;
   display: flex;

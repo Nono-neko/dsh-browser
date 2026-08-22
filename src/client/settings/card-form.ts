@@ -178,6 +178,11 @@ export class BrowserSettingsForm<T extends object> {
     this.listeners.clear()
   }
 
+  /** Re-fetch the namespace from the Host (for settings pages that mount late). */
+  refresh(): void {
+    void (this.scope as unknown as { load: () => Promise<void> }).load()
+  }
+
   private snapshot(): { status: 'loading' | 'ready' | 'unavailable'; value: T | undefined; user: unknown; writable: boolean } {
     const snap = this.scope.getSnapshot()
     return { status: snap.status, value: snap.value, user: snap.user, writable: snap.writable }

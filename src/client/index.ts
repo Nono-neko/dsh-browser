@@ -33,7 +33,7 @@ import { mountSidebarEntry } from './sidebar-entry.ts'
 import { initialState, makeTab, TabsStore } from './store.ts'
 import { setTranslator } from './translate.ts'
 import { BrowserSettingsForm } from './settings/card-form.ts'
-import { BrowserSettingsCard } from './settings/BrowserSettingsCard.tsx'
+import { BrowserSettingsCard, BrowserSettingsPage, setDesktopForm, clearDesktopForm } from './settings/BrowserSettingsCard.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -178,31 +178,61 @@ export function apply(ctx: ClientContext): void {
   settingsScope.subscribe(syncUi)
   syncUi()
 
-  // Plugin configuration card: one staged form over the dsh-browser settings
-  // namespace, contributed to the official Plugins section.
-  // COMPAT: web build declares settings.plugin.item as a list slot (needs id);
-  // Desktop build declares it as a keyed slot (needs key). Pass both so either
-  // runtime accepts the registration.
-  ctx.slots.inject('settings.plugin.item', () => {
-    const form = new BrowserSettingsForm<BrowserSettings>(settingsScope, [
-      { field: 'enabled', kind: 'boolean' },
-      { field: 'announceToAgent', kind: 'boolean' },
-      { field: 'allowPrivateAccess', kind: 'boolean' },
-      { field: 'defaultHome', kind: 'text' },
-      { field: 'maxTabs', kind: 'number' },
-      { field: 'browserExecutable', kind: 'text' },
-      { field: 'proxyServer', kind: 'text' },
-    ])
-    const disposeForm = (): void => { form.dispose() }
-    return [disposeForm, ctx.slots.register({
-      name: 'settings.plugin.item',
-      id: 'dsh-browser',
-      key: 'dsh-browser',
-      order: 90,
-      locale: NS,
-      inject: () => form.injectFace(),
-    } as any, BrowserSettingsCard)]
-  })
+  // Plugin configuration UI.
+  //
+  // RUNTIME SPLIT:
+  //   - web build:      register into settings.plugin.item (a card inside the
+  //                     Plugins section's "插件配置" tab). This is a list slot
+  //                     using plain callback + id.
+  //   - Desktop build:  register into settings.section (a standalone entry in
+  //                     the settings left nav). This avoids the Desktop build's
+  //                     keyed-slot incompatibility and matches how built-in
+  //                     Desktop features (桌面版, Web UI 插件) expose settings.
+  const isDesktop = typeof navigator !== 'undefined' && /Electron/.test(navigator.userAgent)
+  const formFields = [
+    { field: 'enabled', kind: 'boolean' as const },
+    { field: 'announceToAgent', kind: 'boolean' as const },
+    { field: 'allowPrivateAccess', kind: 'boolean' as const },
+    { field: 'defaultHome', kind: 'text' as const },
+    { field: 'maxTabs', kind: 'number' as const },
+    { field: 'browserExecutable', kind: 'text' as const },
+    { field: 'proxyServer', kind: 'text' as const },
+  ]
+
+  if (isDesktop) {
+    // Desktop: standalone settings page in the left nav.
+    // settings.section does not support the `inject` option, so we stash the
+    // form face in a module-level variable that BrowserSettingsPage reads.
+    ctx.slots.inject('settings.section' as any, () => {
+      const form = new BrowserSettingsForm<BrowserSettings>(settingsScope, formFields)
+      setDesktopForm(form)
+      const disposeRegister = ctx.slots.register({
+        name: 'settings.section',
+        id: 'dsh-browser',
+        order: 90,
+        label: () => t('settings.title'),
+        locale: NS,
+      } as any, BrowserSettingsPage)
+      return () => {
+        disposeRegister()
+        form.dispose()
+        clearDesktopForm()
+      }
+    })
+  } else {
+    // Web: card inside the Plugins section
+    ctx.slots.inject('settings.plugin.item', () => {
+      const form = new BrowserSettingsForm<BrowserSettings>(settingsScope, formFields)
+      const disposeForm = (): void => { form.dispose() }
+      return [disposeForm, ctx.slots.register({
+        name: 'settings.plugin.item',
+        id: 'dsh-browser',
+        order: 90,
+        locale: NS,
+        inject: () => form.injectFace(),
+      }, BrowserSettingsCard)]
+    })
+  }
 
   ctx.effect(() => () => {
     disposeUi?.()

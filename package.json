@@ -1,6 +1,6 @@
 {
   "name": "@nono-neko/dsh-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Embedded browser for the DSH web and desktop GUI: a sidebar entry plus a center-column panel with multi-tab iframe browsing (address bar, back/forward, per-workspace persistence), a workspace file viewer, agent tools (browser_open, browser_read), a plugin settings card, and a system-prompt announcement. Hot-pluggable as a standalone cordis bundle — mounted via `dsh plugin --profile <name> add link:<repo>`. Web version requires a one-line whitelist patch in DSH source; Desktop works out of the box.",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
@@ -87,5 +87,13 @@
     "README.i18n.yaml",
     "LICENSE"
   ],
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nono-neko/dsh-browser.git"
+  },
+  "homepage": "https://github.com/Nono-neko/dsh-browser#readme",
+  "bugs": {
+    "url": "https://github.com/Nono-neko/dsh-browser/issues"
+  }
 }

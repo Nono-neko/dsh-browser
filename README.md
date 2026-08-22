@@ -103,6 +103,10 @@ The plugin provides an interactive settings form:
 - **Desktop**: standalone **Embedded browser** entry in the left nav — works
   out of the box, no source changes needed
 
+| Web settings card | Desktop settings page |
+|---|---|
+| ![Web settings card](docs/images/settings-web.png) | ![Desktop settings page](docs/images/settings-desktop.png) |
+
 > **Web requires a DSH whitelist patch.** As of DSH rc.6, the settings API only exposes
 > namespaces in a hard-coded allowlist inside
 > `packages/host/apiproxy/src/api-proxy.ts` (`WEB_SETTINGS_NAMESPACES`). An

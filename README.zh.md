@@ -88,6 +88,10 @@ dsh plugin --profile <name> add @nono-neko/dsh-browser
 - **Web 版**：**设置 → 插件 → 内置浏览器**，需要修改 DSH 白名单（见下方）
 - **Desktop 版**：左侧导航栏 **内置浏览器**，无需修改源码，安装后立即可用
 
+| Web 版设置卡 | Desktop 版设置页 |
+|---|---|
+| ![Web 版设置卡](docs/images/settings-web.png) | ![Desktop 版设置页](docs/images/settings-desktop.png) |
+
 > **Web 版需要修改 DSH 白名单。** 截至 DSH rc.6，设置 API 只暴露
 > `packages/host/apiproxy/src/api-proxy.ts` 中硬编码白名单
 > （`WEB_SETTINGS_NAMESPACES`）里的命名空间。外部插件的命名空间即使注册成

@@ -331,7 +331,7 @@ export function BrowserSettingsPage(props: any): JSX.Element {
   const form = desktopForm
   if (form === undefined) {
     return (
-      <div className={css.card}>
+      <div className={css.page}>
         <p className={css.notExposed}>表单未初始化</p>
       </div>
     )
@@ -343,113 +343,84 @@ export function BrowserSettingsPage(props: any): JSX.Element {
     const unsubscribe = form.store.subscribe(() => {
       setState(form.store.getSnapshot())
     })
+    form.refresh()
     return unsubscribe
   }, [form])
 
   if (state.status === 'unavailable') {
     return (
-      <div className={css.card}>
+      <div className={css.page}>
         <p className={css.notExposed}>{t('settings.notExposed')}</p>
       </div>
     )
   }
   if (state.status === 'loading') {
-    return <div className={css.card}><p style={{ color: '#888', padding: '14px 16px' }}>加载中...</p></div>
+    return <div className={css.page}><p style={{ color: '#888' }}>加载中...</p></div>
+  }
+
+  const renderBoolean = (field: string, labelKey: string, hintKey: string) => {
+    const f = state.fields[field]
+    const mode = !f.overridden ? 'inherit' : f.text === 'true' ? 'on' : f.text === 'false' ? 'off' : 'inherit'
+    return (
+      <div className={css.pageField}>
+        <span className={css.pageFieldLabel}>{t(labelKey)}</span>
+        <div className={css.pageFieldControl}>
+          <div className={css.segment} role="group">
+            <button type="button" className={css.segmentButton} data-active={mode === 'inherit' ? '' : undefined} disabled={!state.writable} onClick={() => form.resetField(field)}>继承</button>
+            <button type="button" className={css.segmentButton} data-active={mode === 'on' ? '' : undefined} disabled={!state.writable} onClick={() => form.setBoolean(field, true)}>开</button>
+            <button type="button" className={css.segmentButton} data-active={mode === 'off' ? '' : undefined} disabled={!state.writable} onClick={() => form.setBoolean(field, false)}>关</button>
+          </div>
+        </div>
+        <span className={css.pageFieldHint}>{t(hintKey)}</span>
+      </div>
+    )
+  }
+
+  const renderText = (field: string, labelKey: string, hintKey: string) => {
+    const f = state.fields[field]
+    return (
+      <div className={css.pageField}>
+        <span className={css.pageFieldLabel}>{t(labelKey)}</span>
+        <div className={css.pageFieldControl}>
+          <input
+            type="text"
+            className={css.textInput}
+            value={f.text}
+            disabled={!state.writable}
+            data-invalid={f.invalid ? '' : undefined}
+            onChange={(e) => form.editText(field, e.target.value)}
+            style={{ flex: 1, maxWidth: 360 }}
+          />
+          {f.overridden ? (
+            <button type="button" className={css.resetButton} disabled={!state.writable} onClick={() => form.resetField(field)}>恢复默认</button>
+          ) : null}
+        </div>
+        <span className={css.pageFieldHint}>{t(hintKey)}</span>
+      </div>
+    )
   }
 
   return (
-    <div className={css.card}>
-      {state.writable ? null : <p className={css.readOnly}>{t('settings.readOnly')}</p>}
+    <div className={css.page}>
+      <h2 className={css.pageTitle}>{t('settings.title')}</h2>
+      <p className={css.pageDesc}>配置内置浏览器的运行参数，修改后点击保存生效。</p>
 
-      <BooleanRow
-        field="enabled"
-        label={t('settings.enabled')}
-        hint={t('settings.enabledHint')}
-        state={state.fields.enabled}
-        writable={state.writable}
-        t={t}
-        setBoolean={(field, value) => form.setBoolean(field, value)}
-        resetField={(field) => form.resetField(field)}
-      />
-      <BooleanRow
-        field="announceToAgent"
-        label={t('settings.announceToAgent')}
-        hint={t('settings.announceToAgentHint')}
-        state={state.fields.announceToAgent}
-        writable={state.writable}
-        t={t}
-        setBoolean={(field, value) => form.setBoolean(field, value)}
-        resetField={(field) => form.resetField(field)}
-      />
-      <BooleanRow
-        field="allowPrivateAccess"
-        label={t('settings.allowPrivate')}
-        hint={t('settings.allowPrivateHint')}
-        state={state.fields.allowPrivateAccess}
-        writable={state.writable}
-        t={t}
-        setBoolean={(field, value) => form.setBoolean(field, value)}
-        resetField={(field) => form.resetField(field)}
-      />
-      <TextRow
-        field="defaultHome"
-        label={t('settings.defaultHome')}
-        hint={t('settings.defaultHomeHint')}
-        state={state.fields.defaultHome}
-        writable={state.writable}
-        t={t}
-        editText={(field, text) => form.editText(field, text)}
-        resetField={(field) => form.resetField(field)}
-      />
-      <TextRow
-        field="maxTabs"
-        label={t('settings.maxTabs')}
-        hint={t('settings.maxTabsHint')}
-        state={state.fields.maxTabs}
-        writable={state.writable}
-        t={t}
-        editText={(field, text) => form.editText(field, text)}
-        resetField={(field) => form.resetField(field)}
-      />
-      <TextRow
-        field="browserExecutable"
-        label={t('settings.browserExecutable')}
-        hint={t('settings.browserExecutableHint')}
-        state={state.fields.browserExecutable}
-        writable={state.writable}
-        t={t}
-        editText={(field, text) => form.editText(field, text)}
-        resetField={(field) => form.resetField(field)}
-      />
-      <TextRow
-        field="proxyServer"
-        label={t('settings.proxyServer')}
-        hint={t('settings.proxyServerHint')}
-        state={state.fields.proxyServer}
-        writable={state.writable}
-        t={t}
-        editText={(field, text) => form.editText(field, text)}
-        resetField={(field) => form.resetField(field)}
-      />
+      <div className={css.pageCard}>
+        {state.writable ? null : <p className={css.readOnly}>{t('settings.readOnly')}</p>}
 
-      <div className={css.footer}>
-        {state.failed ? <span className={css.saveFailed}>{t('settings.saveFailed')}</span> : null}
-        <button
-          type="button"
-          className={css.discardButton}
-          disabled={!state.dirty || state.saving}
-          onClick={() => form.discard()}
-        >
-          {t('settings.discard')}
-        </button>
-        <button
-          type="button"
-          className={css.saveButton}
-          disabled={!state.dirty || state.invalid || state.saving}
-          onClick={() => { void form.save() }}
-        >
-          {state.saving ? t('settings.saving') : t('settings.save')}
-        </button>
+        {renderBoolean('enabled', 'settings.enabled', 'settings.enabledHint')}
+        {renderBoolean('announceToAgent', 'settings.announceToAgent', 'settings.announceToAgentHint')}
+        {renderBoolean('allowPrivateAccess', 'settings.allowPrivate', 'settings.allowPrivateHint')}
+        {renderText('defaultHome', 'settings.defaultHome', 'settings.defaultHomeHint')}
+        {renderText('maxTabs', 'settings.maxTabs', 'settings.maxTabsHint')}
+        {renderText('browserExecutable', 'settings.browserExecutable', 'settings.browserExecutableHint')}
+        {renderText('proxyServer', 'settings.proxyServer', 'settings.proxyServerHint')}
+
+        <div className={css.pageFooter}>
+          {state.failed ? <span className={css.saveFailed}>{t('settings.saveFailed')}</span> : null}
+          <button type="button" className={css.discardButton} disabled={!state.dirty || state.saving} onClick={() => form.discard()}>{t('settings.discard')}</button>
+          <button type="button" className={css.saveButton} disabled={!state.dirty || state.invalid || state.saving} onClick={() => { void form.save() }}>{state.saving ? t('settings.saving') : t('settings.save')}</button>
+        </div>
       </div>
     </div>
   )

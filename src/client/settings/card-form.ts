@@ -180,7 +180,13 @@ export class BrowserSettingsForm<T extends object> {
 
   /** Re-fetch the namespace from the Host (for settings pages that mount late). */
   refresh(): void {
-    void (this.scope as unknown as { load: () => Promise<void> }).load()
+    const scope = this.scope as unknown as { load?: () => Promise<void> }
+    if (typeof scope.load !== 'function') return
+    try {
+      void scope.load()
+    } catch {
+      // ignore — data is already loaded via constructor subscription
+    }
   }
 
   private snapshot(): { status: 'loading' | 'ready' | 'unavailable'; value: T | undefined; user: unknown; writable: boolean } {

@@ -14,7 +14,13 @@ dual-face cordis bundle: the host half owns the agent tools, the
 + workspace file listing/serving), the settings namespace, and the
 system-prompt announcement; the browser half renders the sidebar entry, the
 multi-tab panel, and the plugin settings card. Hot-pluggable — mounted via
-`dsh plugin --profile <name> add link:<repo>`, no dsh source changes.
+`dsh plugin --profile <name> add link:<repo>`.
+
+> **Platform support.** Works with both DSH Web and Desktop. On Web the
+> settings card lives under Settings → Plugins and requires a one-line
+> whitelist patch in DSH source (see Option A below). On Desktop it appears
+> as a standalone "Embedded browser" entry in the left nav — no source
+> changes needed.
 
 ## Prerequisites
 
@@ -50,10 +56,11 @@ Chromium.
 - **Agent tools**: `browser_open` pushes a URL into the panel (a new tab opens
   and the panel gains focus); `browser_read` fetches a page from the host and
   returns extracted readable text (static-HTML approximation, no JavaScript).
-- **Settings card**: the official Plugins settings section gets an
-  "Embedded browser" card with staged edits, save/discard, and inherit/reset
-  semantics. Fields: enable, agent announcement, home page, tab cap,
-  private-address override, browser executable path, proxy server.
+- **Settings card**: On Web, an "Embedded browser" card appears under
+  **Settings → Plugins**; on Desktop, a standalone "Embedded browser" page
+  appears in the left navigation. Both support staged edits, save/discard,
+  and inherit/reset semantics. Fields: enable, agent announcement, home page,
+  tab cap, private-address override, browser executable path, proxy server.
 - **Agent announcement**: a system-prompt section tells every agent the plugin
   exists, what its tools do, and its limits (same mechanism dsh-ssh uses).
 
@@ -89,10 +96,14 @@ document. All fields are optional.
 
 ### Option A — Settings card in the DSH GUI
 
-The plugin ships a settings card under **Settings → Plugins → Embedded browser**
-with staged edits, save/discard, and inherit/reset semantics.
+The plugin provides an interactive settings form:
 
-> **DSH whitelist requirement.** As of DSH rc.6, the settings API only exposes
+- **Web**: **Settings → Plugins → Embedded browser** — requires the DSH
+  whitelist patch (see below)
+- **Desktop**: standalone **Embedded browser** entry in the left nav — works
+  out of the box, no source changes needed
+
+> **Web requires a DSH whitelist patch.** As of DSH rc.6, the settings API only exposes
 > namespaces in a hard-coded allowlist inside
 > `packages/host/apiproxy/src/api-proxy.ts` (`WEB_SETTINGS_NAMESPACES`). An
 > external plugin's namespace is filtered out even after it registers

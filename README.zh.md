@@ -11,7 +11,11 @@ DeepSeek Harness（DSH）的外部插件包，单包双半区 cordis bundle：ho
 agent 工具、`/api/dsh-browser` 路由族（Puppeteer 页面代理 + SSE 打开事件流 +
 工作区文件列表/读取）、设置命名空间与系统提示词公告；browser 半区渲染侧边栏
 入口、多标签面板与插件设置卡。热插拔挂载——
-`dsh plugin --profile <name> add link:<repo>`，不改 DSH 源码。
+`dsh plugin --profile <name> add link:<repo>`。
+
+> **平台支持**：同时兼容 DSH Web 版与 Desktop 版。Web 版设置卡位于
+> 「设置 → 插件」，需在 DSH 源码中加一行白名单（见下方方案 A）；
+> Desktop 版设置页为左侧独立菜单项，无需修改源码。
 
 ## 前置要求
 
@@ -41,9 +45,10 @@ Windows、macOS、Linux 上自动检测可执行文件路径，也可在设置�
 - **agent 工具**：`browser_open` 把网页推送到面板（新开标签并聚焦面板）；
   `browser_read` 由宿主抓取网页并返回可读正文文本（静态 HTML 近似提取，
   不执行 JS）。
-- **设置卡**：官方设置页「插件」区新增「内置浏览器」卡片，编辑暂存、
-  保存/放弃、继承/恢复默认语义齐全。字段：启用开关、agent 播报、主页地址、
-  标签上限、内网访问开关、浏览器可执行文件路径、代理服务器。
+- **设置卡**：Web 版在「设置 → 插件」区新增「内置浏览器」卡片；Desktop 版
+  在左侧导航栏新增「内置浏览器」独立设置页。两者均支持暂存编辑、保存/放弃、
+  继承/恢复默认语义。字段：启用开关、agent 播报、主页地址、标签上限、内网访问
+  开关、浏览器可执行文件路径、代理服务器。
 - **agent 公告**：系统提示词段落向每个 agent 说明本插件、工具与限制（与
   dsh-ssh 同一机制）。
 
@@ -78,10 +83,12 @@ dsh plugin --profile <name> add @nono-neko/dsh-browser
 
 ### 方案 A — DSH 图形界面设置卡
 
-插件在 **设置 → 插件 → 内置浏览器** 提供设置卡，支持暂存编辑、保存/放弃、
-继承/重置语义。
+插件在设置页提供可交互的设置表单：
 
-> **需要修改 DSH 白名单。** 截至 DSH rc.6，设置 API 只暴露
+- **Web 版**：**设置 → 插件 → 内置浏览器**，需要修改 DSH 白名单（见下方）
+- **Desktop 版**：左侧导航栏 **内置浏览器**，无需修改源码，安装后立即可用
+
+> **Web 版需要修改 DSH 白名单。** 截至 DSH rc.6，设置 API 只暴露
 > `packages/host/apiproxy/src/api-proxy.ts` 中硬编码白名单
 > （`WEB_SETTINGS_NAMESPACES`）里的命名空间。外部插件的命名空间即使注册成
 > 功也会被过滤，因此设置卡会显示「未暴露」，直到你把 `'dsh-browser'` 加进

@@ -6,9 +6,65 @@
 
 /* Standalone page wrapper for the Desktop settings.section variant. */
 .page {
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 24px 20px;
+  padding: 24px 28px 40px;
+  max-width: 720px;
+}
+
+.pageTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--dsw-alias-label-primary, #1f2329);
+}
+
+.pageDesc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
+  margin: 0 0 20px;
+}
+
+/* Desktop page: no card border, fields stack vertically */
+.pageCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.pageField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 0;
+  border-top: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+}
+
+.pageFieldLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary, #1f2329);
+}
+
+.pageFieldHint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary, #8a919f);
+}
+
+.pageFieldControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pageFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--dsw-alias-border-l2, #d6d9de);
+  margin-top: 4px;
 }
 
 .card {
@@ -129,7 +185,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 0;
+  padding: 14px 0;
   border-top: 1px solid var(--dsw-alias-border-l2, #d6d9de);
 }
 

@@ -16,11 +16,11 @@ system-prompt announcement; the browser half renders the sidebar entry, the
 multi-tab panel, and the plugin settings card. Hot-pluggable — mounted via
 `dsh plugin --profile <name> add link:<repo>`.
 
-> **Platform support.** Works with both DSH Web and Desktop. On Web the
-> settings card lives under Settings → Plugins and requires a one-line
-> whitelist patch in DSH source (see Option A below). On Desktop it appears
-> as a standalone "Embedded browser" entry in the left nav — no source
-> changes needed.
+> **Platform support.** Works with both DSH Web and Desktop. Core functionality
+> requires no DSH source changes. On Web, the visual settings card under
+> Settings → Plugins needs a one-time source patch (Option A), or you can use
+> config files instead (Option B). On Desktop it appears as a standalone
+> "Embedded browser" entry in the left nav — no source changes needed.
 
 ## Prerequisites
 
@@ -94,12 +94,12 @@ document. All fields are optional.
 | `browserExecutable` | string | auto-detect | Absolute path to a Chromium-based browser (Chrome / Edge / Chromium). |
 | `proxyServer` | string | empty | Route Puppeteer traffic through a proxy, e.g. `http://127.0.0.1:7890`. |
 
-### Option A — Settings card in the DSH GUI
+### Option A — Visual settings card (one-time DSH source patch)
 
 The plugin provides an interactive settings form:
 
-- **Web**: **Settings → Plugins → Embedded browser** — requires the DSH
-  whitelist patch (see below)
+- **Web**: **Settings → Plugins → Embedded browser** — requires a one-time
+  DSH source patch (see below). Core functionality works without it.
 - **Desktop**: standalone **Embedded browser** entry in the left nav — works
   out of the box, no source changes needed
 
@@ -107,14 +107,15 @@ The plugin provides an interactive settings form:
 |---|---|
 | ![Web settings card](docs/images/settings-web.png) | ![Desktop settings page](docs/images/settings-desktop.png) |
 
-> **Web requires a DSH whitelist patch.** As of DSH rc.6, the settings API only exposes
-> namespaces in a hard-coded allowlist inside
-> `packages/host/apiproxy/src/api-proxy.ts` (`WEB_SETTINGS_NAMESPACES`). An
-> external plugin's namespace is filtered out even after it registers
-> correctly, so the card renders "not exposed" until you add `'dsh-browser'`
-> to that array and restart `dsh web`. The DSH team has noted that moving this
-> declaration to `settings.register()` so plugins can self-expose is deferred
-> work.
+> **The Web visual settings card needs a one-time DSH source patch.** As of
+> DSH rc.6, the settings API only exposes namespaces in a hard-coded
+> allowlist inside `packages/host/apiproxy/src/api-proxy.ts`
+> (`WEB_SETTINGS_NAMESPACES`). An external plugin's namespace is filtered out
+> even after it registers correctly, so the card renders "not exposed" until
+> you add `'dsh-browser'` to that array and restart `dsh web`. This patch only
+> enables the visual settings card — core features (browsing, agent tools,
+> etc.) work without it. The DSH team has noted that moving this declaration
+> to `settings.register()` so plugins can self-expose is deferred work.
 
 Edit `packages/host/apiproxy/src/api-proxy.ts` in your DSH checkout:
 

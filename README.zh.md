@@ -13,9 +13,9 @@ agent 工具、`/api/dsh-browser` 路由族（Puppeteer 页面代理 + SSE 打�
 入口、多标签面板与插件设置卡。热插拔挂载——
 `dsh plugin --profile <name> add link:<repo>`。
 
-> **平台支持**：同时兼容 DSH Web 版与 Desktop 版。Web 版设置卡位于
-> 「设置 → 插件」，需在 DSH 源码中加一行白名单（见下方方案 A）；
-> Desktop 版设置页为左侧独立菜单项，无需修改源码。
+> **平台支持**：同时兼容 DSH Web 版与 Desktop 版。核心功能无需改动 DSH。
+> Web 端的可视化设置卡位于「设置 → 插件」，需要一次性源码补丁（方案 A），
+> 或改用配置文件（方案 B）；Desktop 版设置页为左侧独立菜单项，无需修改源码。
 
 ## 前置要求
 
@@ -81,22 +81,23 @@ dsh plugin --profile <name> add @nono-neko/dsh-browser
 | `browserExecutable` | string | 自动检测 | Chromium 系浏览器（Chrome / Edge / Chromium）的绝对路径。 |
 | `proxyServer` | string | 空 | 通过代理路由 Puppeteer 流量，例如 `http://127.0.0.1:7890`。 |
 
-### 方案 A — DSH 图形界面设置卡
+### 方案 A — 可视化设置卡（一次性 DSH 源码补丁）
 
 插件在设置页提供可交互的设置表单：
 
-- **Web 版**：**设置 → 插件 → 内置浏览器**，需要修改 DSH 白名单（见下方）
+- **Web 版**：**设置 → 插件 → 内置浏览器**，需要一次性 DSH 源码补丁（见下方）。核心功能无需补丁即可使用。
 - **Desktop 版**：左侧导航栏 **内置浏览器**，无需修改源码，安装后立即可用
 
 | Web 版设置卡 | Desktop 版设置页 |
 |---|---|
 | ![Web 版设置卡](docs/images/settings-web.png) | ![Desktop 版设置页](docs/images/settings-desktop.png) |
 
-> **Web 版需要修改 DSH 白名单。** 截至 DSH rc.6，设置 API 只暴露
-> `packages/host/apiproxy/src/api-proxy.ts` 中硬编码白名单
+> **Web 端的可视化设置卡需要一次性 DSH 源码补丁。** 截至 DSH rc.6，设置 API
+> 只暴露 `packages/host/apiproxy/src/api-proxy.ts` 中硬编码白名单
 > （`WEB_SETTINGS_NAMESPACES`）里的命名空间。外部插件的命名空间即使注册成
 > 功也会被过滤，因此设置卡会显示「未暴露」，直到你把 `'dsh-browser'` 加进
-> 该数组并重启 `dsh web`。DSH 团队已注明，把这个声明移到
+> 该数组并重启 `dsh web`。此补丁仅用于启用可视化设置卡，核心功能（浏览、
+> agent 工具等）无需补丁即可使用。DSH 团队已注明，把这个声明移到
 > `settings.register()` 让插件自行暴露是待办工作。
 
 在你的 DSH 源码中编辑 `packages/host/apiproxy/src/api-proxy.ts`：

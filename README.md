@@ -78,6 +78,20 @@ Restart `dsh web`; the sidebar entry appears. The web profile needs the
 `@deepseek-ai/*` client packages the bundle injects (any rc.6 web deployment
 has them). Make sure a Chromium-based browser is installed on the host.
 
+## Uninstall
+
+```sh
+# remove from a profile
+dsh plugin --profile <name> remove @nono-neko/dsh-browser
+
+# if installed from a local checkout
+dsh plugin --profile <name> remove link:<repo>
+```
+
+Restart `dsh web` after removal. The Web whitelist patch (Option A), if
+applied, can be reverted by removing `'dsh-browser'` from
+`WEB_SETTINGS_NAMESPACES` in `api-proxy.ts`.
+
 ## Configuration
 
 The plugin reads its settings from a layered source: schema defaults, then the
@@ -129,7 +143,7 @@ const WEB_SETTINGS_NAMESPACES = [
 DSH runs through `tsx`, so no rebuild is needed — restart `dsh web` and the
 card becomes editable.
 
-### Option B — Config file only (no DSH source changes)
+### Option B — Config file only (no one-time patch needed)
 
 If you do not want to patch DSH, set the same fields directly. Two layers are
 available:

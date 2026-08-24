@@ -58,13 +58,26 @@ Windows、macOS、Linux 上自动检测可执行文件路径，也可在设置�
 # 本地 checkout（开发模式）
 dsh plugin --profile <name> add link:<repo>
 
-# npm（发布后）
+# npm（已发布）
 dsh plugin --profile <name> add @nono-neko/dsh-browser
 ```
 
 重启 `dsh web` 后侧边栏出现入口。web profile 需具备 bundle 注入的
 `@deepseek-ai/*` 客户端包（任何 rc.6 web 部署都自带）。请确保宿主机器已安装
 基于 Chromium 的浏览器。
+
+## 卸载
+
+```sh
+# 从指定 profile 移除
+dsh plugin --profile <name> remove @nono-neko/dsh-browser
+
+# 如果是本地 checkout 安装
+dsh plugin --profile <name> remove link:<repo>
+```
+
+移除后重启 `dsh web`。如果之前应用了 Web 白名单补丁（方案 A），可从
+`api-proxy.ts` 的 `WEB_SETTINGS_NAMESPACES` 中删掉 `'dsh-browser'` 来回滚。
 
 ## 配置
 
@@ -111,7 +124,7 @@ const WEB_SETTINGS_NAMESPACES = [
 
 DSH 通过 `tsx` 运行，无需重新构建——重启 `dsh web` 后设置卡即可编辑。
 
-### 方案 B — 仅用配置文件（不改 DSH 源码）
+### 方案 B — 仅用配置文件（不加一次性补丁）
 
 如果不想修改 DSH，可以直接通过文件配置相同字段。有两个层级：
 

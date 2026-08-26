@@ -171,6 +171,26 @@ dsh-browser:
 The settings card stays read-only ("not exposed") in this mode, but every field
 is honored from the files above.
 
+## FAQ
+
+**Q: Install fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`?**
+
+A: This happens when installing from git — pnpm blocks the `prepare` build
+script by default. Recommended fix: install from npm instead (pre-built, no
+build needed):
+
+```sh
+dsh plugin --profile <name> add @nono-neko/dsh-browser
+```
+
+If you prefer git install, add the package to `allowBuilds` in your profile's
+`pnpm-workspace.yaml`:
+
+```yaml
+allowBuilds:
+  - '@nono-neko/dsh-browser'
+```
+
 ## Development
 
 ```sh

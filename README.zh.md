@@ -151,6 +151,25 @@ dsh-browser:
 此模式下设置卡保持只读（显示「未暴露」），但上述文件中的所有字段都会生
 效。
 
+## 常见问题
+
+**Q：安装时报 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 怎么办？**
+
+A：这是通过 git 安装时 pnpm 默认阻止了 `prepare` 构建脚本。推荐改用 npm
+安装（已预构建，无需编译）：
+
+```sh
+dsh plugin --profile <name> add @nono-neko/dsh-browser
+```
+
+如果坚持用 git 安装，在 profile 的 `pnpm-workspace.yaml` 中添加
+`allowBuilds`：
+
+```yaml
+allowBuilds:
+  - '@nono-neko/dsh-browser'
+```
+
 ## 开发
 
 ```sh

@@ -1,9 +1,8 @@
 /**
  * The plugin settings card: registers into the official Plugins section's
- * `settings.plugin.item` slot (declared at runtime by dsh's settings-plugins
- * shell) and renders the staged form over the `dsh-browser` settings
- * namespace. The slot type is declared here with the shell's shape so this
- * standalone package can register without depending on the shell package.
+ * `settings.plugin.item` slot (keyed by settings namespace, declared by
+ * @deepseek-ai/dsh-client-ui-settings-plugins) and renders the staged form
+ * over the `dsh-browser` settings namespace.
  *
  * Layout mirrors the official PluginCard: a clickable header (name +
  * description + chevron) that discloses the staged form and save/discard
@@ -13,6 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type { BrowserSettingsActions, CardState, BrowserSettingsForm } from './card-form.ts'
 import css from './settings-card.module.css'
 
@@ -24,28 +24,6 @@ export interface BrowserSettingsCardFace {
   hooks: {
     /** Card snapshot bound by the renderer as useBrowserSettingsCard. */
     browserSettingsCard: HostObservable<CardState>
-  }
-}
-
-/** Owner share of a plugin card (the section supplies nothing). */
-export interface SettingsPluginItemOwnerProps {
-  /** Marker field: card owner props are intentionally empty. */
-  children?: never
-}
-
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface SlotMap {
-    /**
-     * One plugin's card inside the plugin configuration section. Options:
-     * `id` (card key), `order` (card position). Declared at runtime by the
-     * Plugins settings section; this package declares the type with the same
-     * shape so it can register without depending on that package.
-     */
-    'settings.plugin.item': {
-      kind: 'list'
-      scope: 'root'
-      owner: SettingsPluginItemOwnerProps
-    }
   }
 }
 

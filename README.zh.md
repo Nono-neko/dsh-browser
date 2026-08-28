@@ -13,9 +13,9 @@ agent 工具、`/api/dsh-browser` 路由族（Puppeteer 页面代理 + SSE 打�
 入口、多标签面板与插件设置卡。热插拔挂载——
 `dsh plugin --profile <name> add link:<repo>`。
 
-> **平台支持**：同时兼容 DSH Web 版与 Desktop 版。核心功能无需改动 DSH。
-> Web 端的可视化设置卡位于「设置 → 插件」，需要一次性源码补丁（方案 A），
-> 或改用配置文件（方案 B）；Desktop 版设置页为左侧独立菜单项，无需修改源码。
+> **平台支持**：同时兼容 DSH Web 版与 Desktop 版（需 DSH v0.1.1-rc.1 及以上）。
+> 可视化设置卡在两端均开箱即用，无需改动 DSH 源码。Web 版位于「设置 → 插件」，
+> Desktop 版为左侧导航栏独立菜单项「内置浏览器」。
 
 ## 前置要求
 
@@ -76,8 +76,7 @@ dsh plugin --profile <name> remove @nono-neko/dsh-browser
 dsh plugin --profile <name> remove link:<repo>
 ```
 
-移除后重启 `dsh web`。如果之前应用了 Web 白名单补丁（方案 A），可从
-`api-proxy.ts` 的 `WEB_SETTINGS_NAMESPACES` 中删掉 `'dsh-browser'` 来回滚。
+移除后重启 `dsh web`。
 
 ## 配置
 
@@ -94,39 +93,20 @@ dsh plugin --profile <name> remove link:<repo>
 | `browserExecutable` | string | 自动检测 | Chromium 系浏览器（Chrome / Edge / Chromium）的绝对路径。 |
 | `proxyServer` | string | 空 | 通过代理路由 Puppeteer 流量，例如 `http://127.0.0.1:7890`。 |
 
-### 方案 A — 可视化设置卡（一次性 DSH 源码补丁）
+### 可视化设置卡
 
-插件在设置页提供可交互的设置表单：
+插件开箱即用地提供可交互的设置表单（需 DSH v0.1.1-rc.1 及以上）：
 
-- **Web 版**：**设置 → 插件 → 内置浏览器**，需要一次性 DSH 源码补丁（见下方）。核心功能无需补丁即可使用。
-- **Desktop 版**：左侧导航栏 **内置浏览器**，无需修改源码，安装后立即可用
+- **Web 版**：**设置 → 插件 → 内置浏览器**
+- **Desktop 版**：左侧导航栏 **内置浏览器** 独立设置页
 
 | Web 版设置卡 | Desktop 版设置页 |
 |---|---|
 | ![Web 版设置卡](docs/images/settings-web.png) | ![Desktop 版设置页](docs/images/settings-desktop.png) |
 
-> **Web 端的可视化设置卡需要一次性 DSH 源码补丁。** 截至 DSH rc.6，设置 API
-> 只暴露 `packages/host/apiproxy/src/api-proxy.ts` 中硬编码白名单
-> （`WEB_SETTINGS_NAMESPACES`）里的命名空间。外部插件的命名空间即使注册成
-> 功也会被过滤，因此设置卡会显示「未暴露」，直到你把 `'dsh-browser'` 加进
-> 该数组并重启 `dsh web`。此补丁仅用于启用可视化设置卡，核心功能（浏览、
-> agent 工具等）无需补丁即可使用。DSH 团队已注明，把这个声明移到
-> `settings.register()` 让插件自行暴露是待办工作。
+### 配置文件方式（不使用可视化设置卡）
 
-在你的 DSH 源码中编辑 `packages/host/apiproxy/src/api-proxy.ts`：
-
-```ts
-const WEB_SETTINGS_NAMESPACES = [
-  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation',
-  'ui-theme', 'web-search-deepseek', 'dsh-browser',  // <-- 加这一行
-] as const
-```
-
-DSH 通过 `tsx` 运行，无需重新构建——重启 `dsh web` 后设置卡即可编辑。
-
-### 方案 B — 仅用配置文件（不加一次性补丁）
-
-如果不想修改 DSH，可以直接通过文件配置相同字段。有两个层级：
+如果不想使用可视化设置卡，可以直接通过文件配置相同字段。有两个层级：
 
 **插件入口配置**（`cordis.yml` 或 profile 的插件配置）——组合基层，对该
 profile 的所有用户生效：
@@ -147,9 +127,6 @@ dsh-browser:
   browserExecutable: C:\Program Files\Google\Chrome\Application\chrome.exe
   allowPrivateAccess: true
 ```
-
-此模式下设置卡保持只读（显示「未暴露」），但上述文件中的所有字段都会生
-效。
 
 ## 常见问题
 

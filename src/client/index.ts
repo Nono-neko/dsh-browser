@@ -19,6 +19,8 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls the keyed `settings.plugin.item` slot declaration.
+import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 // NOTE: the ui-settings and connection client type modules are deliberately
 // NOT imported: their declaration chains pull the HOST-side dsh-session
 // Context merge into the program, which conflicts with the runtime's
@@ -39,17 +41,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Browser surface copy. */
     'dsh-browser': BrowserKey
-  }
-}
-
-/** The settings-scope service face (provided by dsh-client-ui-settings). */
-interface SettingsScopeBinder {
-  bind<T>(spec: SettingsScopeSpec<T>): SettingsScope<T>
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    settingsScope: SettingsScopeBinder
   }
 }
 
@@ -182,12 +173,11 @@ export function apply(ctx: ClientContext): void {
   //
   // RUNTIME SPLIT:
   //   - web build:      register into settings.plugin.item (a card inside the
-  //                     Plugins section's "插件配置" tab). This is a list slot
-  //                     using plain callback + id.
+  //                     Plugins section's "插件配置" tab). This is a keyed slot
+  //                     using a generator callback + key (namespace).
   //   - Desktop build:  register into settings.section (a standalone entry in
-  //                     the settings left nav). This avoids the Desktop build's
-  //                     keyed-slot incompatibility and matches how built-in
-  //                     Desktop features (桌面版, Web UI 插件) expose settings.
+  //                     the settings left nav). This matches how built-in
+  //                     Desktop features expose settings.
   const isDesktop = typeof navigator !== 'undefined' && /Electron/.test(navigator.userAgent)
   const formFields = [
     { field: 'enabled', kind: 'boolean' as const },
@@ -220,17 +210,16 @@ export function apply(ctx: ClientContext): void {
       }
     })
   } else {
-    // Web: card inside the Plugins section
-    ctx.slots.inject('settings.plugin.item', () => {
+    // Web: card inside the Plugins section (keyed slot, namespace is the key).
+    // Keyed slots require a generator inject callback that yields each register() call.
+    ctx.slots.inject('settings.plugin.item', function* () {
       const form = new BrowserSettingsForm<BrowserSettings>(settingsScope, formFields)
-      const disposeForm = (): void => { form.dispose() }
-      return [disposeForm, ctx.slots.register({
+      yield ctx.slots.register({
         name: 'settings.plugin.item',
-        id: 'dsh-browser',
-        order: 90,
+        key: 'dsh-browser',
         locale: NS,
         inject: () => form.injectFace(),
-      }, BrowserSettingsCard)]
+      }, BrowserSettingsCard)
     })
   }
 

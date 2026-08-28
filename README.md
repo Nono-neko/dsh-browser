@@ -16,11 +16,10 @@ system-prompt announcement; the browser half renders the sidebar entry, the
 multi-tab panel, and the plugin settings card. Hot-pluggable — mounted via
 `dsh plugin --profile <name> add link:<repo>`.
 
-> **Platform support.** Works with both DSH Web and Desktop. Core functionality
-> requires no DSH source changes. On Web, the visual settings card under
-> Settings → Plugins needs a one-time source patch (Option A), or you can use
-> config files instead (Option B). On Desktop it appears as a standalone
-> "Embedded browser" entry in the left nav — no source changes needed.
+> **Platform support.** Works with both DSH Web and Desktop (requires DSH v0.1.1-rc.1
+> or later). The visual settings card works out of the box on both platforms —
+> no DSH source changes needed. On Web it appears under Settings → Plugins; on
+> Desktop it appears as a standalone "Embedded browser" entry in the left nav.
 
 ## Prerequisites
 
@@ -88,9 +87,7 @@ dsh plugin --profile <name> remove @nono-neko/dsh-browser
 dsh plugin --profile <name> remove link:<repo>
 ```
 
-Restart `dsh web` after removal. The Web whitelist patch (Option A), if
-applied, can be reverted by removing `'dsh-browser'` from
-`WEB_SETTINGS_NAMESPACES` in `api-proxy.ts`.
+Restart `dsh web` after removal.
 
 ## Configuration
 
@@ -108,45 +105,20 @@ document. All fields are optional.
 | `browserExecutable` | string | auto-detect | Absolute path to a Chromium-based browser (Chrome / Edge / Chromium). |
 | `proxyServer` | string | empty | Route Puppeteer traffic through a proxy, e.g. `http://127.0.0.1:7890`. |
 
-### Option A — Visual settings card (one-time DSH source patch)
+### Visual settings card
 
-The plugin provides an interactive settings form:
+The plugin provides an interactive settings form out of the box (requires DSH v0.1.1-rc.1 or later):
 
-- **Web**: **Settings → Plugins → Embedded browser** — requires a one-time
-  DSH source patch (see below). Core functionality works without it.
-- **Desktop**: standalone **Embedded browser** entry in the left nav — works
-  out of the box, no source changes needed
+- **Web**: **Settings → Plugins → Embedded browser**
+- **Desktop**: standalone **Embedded browser** entry in the left nav
 
 | Web settings card | Desktop settings page |
 |---|---|
 | ![Web settings card](docs/images/settings-web.png) | ![Desktop settings page](docs/images/settings-desktop.png) |
 
-> **The Web visual settings card needs a one-time DSH source patch.** As of
-> DSH rc.6, the settings API only exposes namespaces in a hard-coded
-> allowlist inside `packages/host/apiproxy/src/api-proxy.ts`
-> (`WEB_SETTINGS_NAMESPACES`). An external plugin's namespace is filtered out
-> even after it registers correctly, so the card renders "not exposed" until
-> you add `'dsh-browser'` to that array and restart `dsh web`. This patch only
-> enables the visual settings card — core features (browsing, agent tools,
-> etc.) work without it. The DSH team has noted that moving this declaration
-> to `settings.register()` so plugins can self-expose is deferred work.
+### Config file method (without the visual settings card)
 
-Edit `packages/host/apiproxy/src/api-proxy.ts` in your DSH checkout:
-
-```ts
-const WEB_SETTINGS_NAMESPACES = [
-  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation',
-  'ui-theme', 'web-search-deepseek', 'dsh-browser',  // <-- add this
-] as const
-```
-
-DSH runs through `tsx`, so no rebuild is needed — restart `dsh web` and the
-card becomes editable.
-
-### Option B — Config file only (no one-time patch needed)
-
-If you do not want to patch DSH, set the same fields directly. Two layers are
-available:
+If you prefer not to use the visual settings card, set the same fields directly. Two layers are available:
 
 **Plugin entry config** (`cordis.yml` or your profile's plugin config) — the
 composition base, applies to every user of that profile:
@@ -167,9 +139,6 @@ dsh-browser:
   browserExecutable: C:\Program Files\Google\Chrome\Application\chrome.exe
   allowPrivateAccess: true
 ```
-
-The settings card stays read-only ("not exposed") in this mode, but every field
-is honored from the files above.
 
 ## FAQ
 

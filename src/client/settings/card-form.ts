@@ -85,7 +85,7 @@ export class BrowserSettingsForm<T extends object> {
       resetField: (field: string) => { this.resetField(field) },
       save: () => { void this.save() },
       discard: () => { this.discard() },
-      refresh: () => { void (this.scope as unknown as { load: () => Promise<void> }).load() },
+      refresh: () => { /* SettingsScope is auto-syncing via subscribe(); no manual load needed in the new API */ },
     }
   }
 

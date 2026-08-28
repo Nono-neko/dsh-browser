@@ -40,10 +40,10 @@
     "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && tsdown",
     "watch": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "pretest": "pnpm build",
+    "pretest": "npx pnpm build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepack": "pnpm build"
+    "prepack": "npx pnpm build"
   },
   "peerDependencies": {
     "react": "^18.2.0",

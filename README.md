@@ -4,14 +4,15 @@ English | [中文](README.zh.md)
 
 > Embedded browser for the DSH Web GUI: browse the web and your workspace files
 > inside the chat interface — multi-tab, address bar, per-workspace tab
-> persistence — plus agent tools (`browser_open`, `browser_read`). Pages are
+> persistence, page-region review comments, and a lightweight workspace
+> editor — plus agent tools (`browser_open`, `browser_read`, `browser_review`). Pages are
 > rendered by a headless Chromium (Puppeteer) on the host, so sites that send
 > `X-Frame-Options` load correctly.
 
 An external plugin package for DeepSeek Harness (DSH). It is a single
 dual-face cordis bundle: the host half owns the agent tools, the
 `/api/dsh-browser` route family (Puppeteer page proxy + SSE open-event stream
-+ workspace file listing/serving), the settings namespace, and the
++ workspace file listing/serving/editing + review storage), the settings namespace, and the
 system-prompt announcement; the browser half renders the sidebar entry, the
 multi-tab panel, and the plugin settings card. Hot-pluggable — mounted via
 `dsh plugin --profile <name> add link:<repo>`.
@@ -52,9 +53,36 @@ Chromium.
   it in the panel through the host's file route. HTML previews get a `<base>`
   injection so relative images/styles resolve, and a CSP `sandbox` header so a
   previewed file can never run scripts in the GUI origin.
+- **Frontend review comments**: on a workspace HTML preview, Review activates a
+  capability-scoped bridge inside the already-mounted iframe. Entering selection
+  neither navigates nor screenshots that page, so its current component state,
+  animation, and scroll position remain live. Click any visible point to select
+  its DOM element; a numbered marker and comment box appear beside it in the
+  parent surface, and stay aligned while the top-level page scrolls. Proxied
+  development-server pages use the compatible parent-layer picker instead: it
+  freezes a screenshot when possible and also supports dragging a larger region,
+  with a live coordinate-layer fallback when capture is unavailable. Add one or
+  more comments, then explicitly confirm and send all drafts to the current
+  Agent. Before handoff, any mistaken draft can be deleted after a separate
+  confirmation; comments already sent to the Agent remain in the review history.
+  Each comment includes the trusted user text plus untrusted page context such as
+  its URL, selector, nearby text/HTML, viewport rectangle, document size, and
+  scroll position at selection. At handoff, the Host makes a best-effort capture
+  of one screenshot per reviewed page as optional Agent context; capture failure
+  does not block the comments. Review comments live in host memory for the current
+  DSH run. If the Agent message or its image attachments cannot be queued, the
+  batch is restored to drafts so it can be retried.
+- **Lightweight workspace editor**: the Editor drawer browses the registered
+  workspace and opens text files in CodeMirror with syntax support for common
+  frontend formats. Common PNG/JPEG/GIF/WebP/AVIF/SVG/BMP/ICO images open in a
+  read-only fitted preview. Text saves use a content hash to detect concurrent changes;
+  stale edits are refused instead of overwriting a newer file. A full VS Code
+  experience is intentionally deferred to a later release.
 - **Agent tools**: `browser_open` pushes a URL into the panel (a new tab opens
   and the panel gains focus); `browser_read` fetches a page from the host and
-  returns extracted readable text (static-HTML approximation, no JavaScript).
+  returns extracted readable text (static-HTML approximation, no JavaScript);
+  `browser_review` reads a user-confirmed review batch with page-region coordinates and
+  `browser_review_resolve` marks completed comments as resolved.
 - **Settings card**: On Web, an "Embedded browser" card appears under
   **Settings → Plugins**; on Desktop, a standalone "Embedded browser" page
   appears in the left navigation. Both support staged edits, save/discard,
@@ -98,7 +126,7 @@ document. All fields are optional.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | boolean | `true` | Mount the sidebar entry, tools, and proxy routes. |
-| `announceToAgent` | boolean | `true` | Inject a system-prompt section telling agents about `browser_open` / `browser_read`. |
+| `announceToAgent` | boolean | `true` | Inject a system-prompt section telling agents about the browser and review tools. |
 | `defaultHome` | string | `https://www.bing.com` | URL loaded by the new-tab / home button. |
 | `maxTabs` | number | `10` | Per-workspace tab cap; oldest inactive tab is trimmed. |
 | `allowPrivateAccess` | boolean | `false` | Let `browser_read` fetch private / loopback addresses. |
@@ -179,35 +207,51 @@ services.
 
 ## Security model
 
-- **Loopback fence**: every `/api/dsh-browser` route (proxy, SSE, file)
+- **Loopback fence**: every `/api/dsh-browser` route (proxy, SSE, files,
+  review screenshots, source editing, and reviews)
   refuses non-loopback clients (socket address + Host header + same-origin
   markers). A LAN-exposed dsh web cannot serve workspace files or the proxy
   to unpaired devices.
-- **Workspace gate**: file listing and serving canonicalize the requested root
+- **Workspace gate**: file listing, serving, review screenshots, review storage, and source editing canonicalize the requested root
   (realpath) and require it to be a registered workspace or inside one;
   every requested path is re-checked after resolution, so symlinks cannot
   escape the root.
 - **Served HTML sandbox**: workspace-previewed HTML is served with
-  `Content-Security-Policy: sandbox` — scripts never execute in the GUI
-  origin (which holds the session's loopback API access).
-- **Proxied pages are not sandboxed**: the Puppeteer-rendered HTML is returned
-  without CSP / X-Frame-Options so it can render in the panel iframe. The
-  loopback fence is the security boundary — only local clients can reach the
-  proxy route. Proxied pages cannot access the GUI origin's APIs because they
-  are served from a different path and the browser's same-origin policy
-  applies to the iframe content.
+  `Content-Security-Policy: sandbox` and an opaque iframe origin. The host adds
+  one response nonce to the page's existing scripts, so local styling and
+  interactivity still work without granting access to GUI
+  APIs. Opaque-origin asset GETs require both a browser-classified subresource
+  destination and a short-lived random capability registered by the initial
+  same-origin document load; script `fetch()` and all mutation routes remain
+  behind the normal same-origin fence. The same capability scopes the live-review
+  bridge; the parent accepts its messages only from the active iframe with the
+  matching token, and treats every reported selector, attribute, and rectangle as
+  untrusted page context.
+- **Proxied pages use an opaque-origin iframe sandbox**: the
+  Puppeteer-rendered HTML is returned without CSP / X-Frame-Options, then the
+  panel iframe permits scripts and forms but deliberately omits
+  `allow-same-origin`. Rendered page scripts therefore cannot read the parent
+  GUI or call its loopback APIs. Review selection and numbered markers for these
+  proxied pages live in the parent browser surface and do not require DOM access
+  inside the frame.
+  Page URLs and all page-derived context are explicitly treated as untrusted,
+  never as Agent instructions.
+- **Source writes are guarded**: the editor accepts text files up to 4 MB,
+  resolves real paths inside the registered workspace, rejects symlink/path
+  escapes, checks the expected SHA-256 hash, and replaces the file atomically.
 - **SSRF guard on `browser_read`**: the target hostname is resolved through
   DNS before the request leaves the process and every address must be public
   (private/loopback/link-local/reserved ranges are refused). Redirects are
   followed manually and each hop is re-checked. The `allowPrivateAccess`
   setting is an explicit override; the risk is yours.
 - **Proxy route uses Puppeteer**: the headless Chromium fetches the page, so
-  the SSRF guard from `browser_read` does not apply to the panel proxy. The
-  `proxyServer` setting lets you route browsing traffic through a local VPN /
-  proxy.
+  the SSRF guard from `browser_read` does not apply to the panel proxy or review
+  screenshots. The `proxyServer` setting lets you route browsing traffic
+  through a local VPN / proxy. Screenshot viewports are bounded to 1920 by
+  1080 pixels.
 - **Size/time caps**: `browser_read` bodies over 2 MB answer an error before
   being read; served workspace files over 64 MB are refused; each Puppeteer
-  render times out after 30 seconds.
+  render times out after 30 seconds; editor source files are capped at 4 MB.
 
 ## Limitations
 
@@ -223,6 +267,15 @@ services.
   Ordinary `<a>` links are intercepted and re-proxied.
 - **`browser_read` sees only static HTML**: JavaScript-rendered pages come
   back without their client-side content, and it cannot use your logins.
+- **Live DOM target selection is workspace-only**: proxied development-server
+  pages still use screenshot/coordinate selection, so their transient animation
+  state may not match an attachment captured later.
+- **Workspace handoff screenshots are a fresh headless render**: they do not
+  reload or move the visible iframe, but transient animation and scroll state in
+  the attachment can differ from the live state where the user clicked. The
+  structured selector, click point, and selection-time scroll remain authoritative.
+- **Review storage is not persistent yet**: comments and batches are cleared
+  when the DSH host restarts.
 - **Browsing consumes real network traffic** on the host machine.
 
 ## License

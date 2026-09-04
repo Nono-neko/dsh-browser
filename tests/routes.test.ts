@@ -5,7 +5,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('../src/host/browser-pool.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/host/browser-pool.ts')>()
+  return { ...original, captureUrl: vi.fn(async () => Buffer.from([1, 2, 3])) }
+})
+
+import { captureUrl } from '../src/host/browser-pool.ts'
 import { OpenBroadcaster, registerBrowserRoutes } from '../src/host/routes.ts'
 import type { WorkspaceGate } from '../src/host/gate.ts'
 
@@ -45,21 +52,23 @@ class SlowResponse extends CapturedResponse {
   }
 }
 
-function request(url: string): IncomingMessage {
+function request(url: string, headers: Record<string, string> = {}): IncomingMessage {
   const req = new EventEmitter() as EventEmitter & {
+    method: string
     url: string
     headers: Record<string, string>
     socket: { remoteAddress: string }
   }
+  req.method = 'GET'
   req.url = url
-  req.headers = { host: 'localhost:3000', origin: 'http://localhost:3000' }
+  req.headers = { host: 'localhost:3000', origin: 'http://localhost:3000', ...headers }
   req.socket = { remoteAddress: '127.0.0.1' }
   return req as unknown as IncomingMessage
 }
 
 function routeHarness(gate: WorkspaceGate): {
-  file: (url: string) => Promise<CapturedResponse>
-  dispatch: (url: string, response: CapturedResponse) => {
+  file: (url: string, headers?: Record<string, string>) => Promise<CapturedResponse>
+  dispatch: (url: string, response: CapturedResponse, headers?: Record<string, string>) => {
     request: IncomingMessage
     completion: Promise<void>
   }
@@ -80,15 +89,15 @@ function routeHarness(gate: WorkspaceGate): {
   const dispose = registerBrowserRoutes(ctx, gate, new OpenBroadcaster())
   const prefix = registrations.find(registration => registration.kind === 'prefix')
   if (prefix === undefined) throw new Error('prefix route was not registered')
-  const dispatch = (url: string, response: CapturedResponse) => {
-    const req = request(url)
+  const dispatch = (url: string, response: CapturedResponse, headers: Record<string, string> = {}) => {
+    const req = request(url, headers)
     const completion = Promise.resolve(prefix.handler(req, response as unknown as ServerResponse))
     return { request: req, completion }
   }
   return {
-    async file(url) {
+    async file(url, headers = {}) {
       const res = new CapturedResponse()
-      await dispatch(url, res).completion
+      await dispatch(url, res, headers).completion
       if (!res.writableFinished && !res.destroyed) await once(res, 'finish')
       return res
     },
@@ -121,6 +130,8 @@ describe('registerBrowserRoutes', () => {
     expect(response.headers['content-type']).toBe('image/svg+xml')
     expect(response.headers['content-security-policy']).toContain('sandbox')
     expect(response.headers['content-security-policy']).toContain("default-src 'none'")
+    expect(response.headers['content-security-policy']).toContain("script-src 'none'")
+    expect(response.headers['content-security-policy']).toContain("connect-src 'none'")
   })
 
   it('resolves HTML relative assets through a path-style base while legacy query URLs still work', async () => {
@@ -145,6 +156,98 @@ describe('registerBrowserRoutes', () => {
     routes.dispose()
     expect(legacyResponse.status).toBe(200)
     expect(legacyResponse.body.toString('utf8')).toBe('asset body')
+  })
+
+  it('injects one response nonce and the live-review bridge into workspace HTML', async () => {
+    await writeFile(join(root, 'preview.html'), '<html><head><script>window.pageScript = true</script></head><body><main>Preview</main></body></html>')
+    const gate: WorkspaceGate = async () => ({ ok: true, canonical: root })
+    const routes = routeHarness(gate)
+    const token = 'abcDEF0123456789'
+
+    const url = `/api/dsh-browser/file?root=${encodeURIComponent(root)}&path=preview.html&reviewToken=${token}`
+    const response = await routes.file(url)
+    routes.dispose()
+
+    const csp = String(response.headers['content-security-policy'])
+    const nonce = /script-src 'nonce-([a-f0-9]{32})'/.exec(csp)?.[1]
+    const html = response.body.toString('utf8')
+    expect(response.status).toBe(200)
+    expect(csp).toContain('sandbox allow-scripts')
+    expect(csp).toContain('connect-src http: https:')
+    expect(nonce).toBeTypeOf('string')
+    expect(html).toContain(`<script nonce="${nonce}">`)
+    expect(html).toContain(`data-dsh-browser-review data-review-token="${token}"`)
+    expect(html).toContain(`nonce="${nonce}" data-dsh-browser-review`)
+    expect(html).toContain("send('review-pick'")
+    expect(html).toContain("send('review-scroll'")
+    expect(html).toContain(`<script nonce="${nonce}">window.pageScript = true</script>`)
+  })
+
+  it('allows opaque-origin preview subresources but rejects script fetches', async () => {
+    await writeFile(join(root, 'index.html'), '<link rel="stylesheet" href="style.css">')
+    await writeFile(join(root, 'style.css'), 'body { color: teal; }')
+    const gate: WorkspaceGate = async () => ({ ok: true, canonical: root })
+    const routes = routeHarness(gate)
+    const htmlUrl = `/api/dsh-browser/file?root=${encodeURIComponent(root)}&path=index.html&reviewToken=abcDEF0123456789`
+    const htmlResponse = await routes.file(htmlUrl)
+    const baseHref = /<base href="([^"]+)">/.exec(htmlResponse.body.toString('utf8'))?.[1]
+    const styleUrl = new URL('style.css', new URL(baseHref as string, 'http://localhost:3000'))
+    const referer = `http://localhost:3000${htmlUrl}`
+    const opaqueHeaders = {
+      origin: 'null',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-dest': 'style',
+      referer,
+    }
+
+    const styleResponse = await routes.file(styleUrl.pathname, opaqueHeaders)
+    const fetchResponse = await routes.file(styleUrl.pathname, {
+      ...opaqueHeaders,
+      'sec-fetch-dest': 'empty',
+    })
+    const invalidTokenUrl = styleUrl.pathname.replace('abcDEF0123456789', 'otherTOKEN0123456')
+    const externalResponse = await routes.file(invalidTokenUrl, {
+      ...opaqueHeaders,
+      referer: 'https://example.com/page',
+    })
+    routes.dispose()
+
+    expect(styleResponse.status).toBe(200)
+    expect(styleResponse.body.toString('utf8')).toContain('color: teal')
+    expect(fetchResponse.status).toBe(403)
+    expect(externalResponse.status).toBe(403)
+  })
+
+  it('captures a workspace page only after re-checking its root', async () => {
+    await writeFile(join(root, 'index.html'), '<html><body>Preview</body></html>')
+    const gate: WorkspaceGate = async value => value === root
+      ? { ok: true, canonical: root }
+      : { ok: false, error: { code: 'workspace-unknown', message: 'unknown workspace' } }
+    const routes = routeHarness(gate)
+    const target = `/api/dsh-browser/file?root=${encodeURIComponent(root)}&path=index.html`
+    const capture = `/api/dsh-browser/screenshot?root=${encodeURIComponent(root)}&url=${encodeURIComponent(target)}&width=800&height=600`
+
+    const response = await routes.file(capture)
+
+    expect(response.status).toBe(200)
+    expect(response.headers['content-type']).toBe('image/png')
+    expect([...response.body]).toEqual([1, 2, 3])
+    expect(vi.mocked(captureUrl)).toHaveBeenCalledWith(
+      expect.stringContaining('reviewToken='),
+      {},
+      { width: 800, height: 600 },
+    )
+
+    const outsideTarget = '/api/dsh-browser/file?root=C%3A%2Foutside&path=index.html'
+    const rejected = await routes.file(`/api/dsh-browser/screenshot?root=${encodeURIComponent(root)}&url=${encodeURIComponent(outsideTarget)}&width=800&height=600`)
+    const crossSite = await routes.file(capture, {
+      origin: 'https://example.com',
+      'sec-fetch-site': 'cross-site',
+    })
+    routes.dispose()
+    expect(rejected.status).toBe(400)
+    expect(rejected.body.toString('utf8')).toContain('outside the workspace')
+    expect(crossSite.status).toBe(403)
   })
 
   it('turns an unexpected route failure into an internal error envelope', async () => {

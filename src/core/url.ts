@@ -94,15 +94,29 @@ export function tabSortKey(url: string): string {
  * and non-http URLs pass through unchanged — they are same-origin or never
  * need proxying.
  */
-export function toProxyUrl(url: string): string {
-  if (url.startsWith('/api/dsh-browser/')) return url
+export function toProxyUrl(url: string, reviewToken?: string): string {
+  if (url.startsWith('/api/dsh-browser/')) return appendReviewToken(url, reviewToken)
   const parsed = tryParseHttp(url)
   if (parsed === null) return url
   try {
     const u = new URL(parsed)
-    if (u.pathname.startsWith('/api/dsh-browser/')) return url
+    if (u.pathname.startsWith('/api/dsh-browser/')) return appendReviewToken(url, reviewToken)
   } catch {
     // fall through to proxy
   }
-  return `/api/dsh-browser/proxy?url=${encodeURIComponent(url)}`
+  const query = new URLSearchParams({ url })
+  if (reviewToken !== undefined) query.set('reviewToken', reviewToken)
+  return `/api/dsh-browser/proxy?${query.toString()}`
+}
+
+function appendReviewToken(url: string, reviewToken: string | undefined): string {
+  if (reviewToken === undefined) return url
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:/i.test(url)
+    const parsed = new URL(url, 'http://dsh.local')
+    parsed.searchParams.set('reviewToken', reviewToken)
+    return absolute ? parsed.toString() : `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return url
+  }
 }

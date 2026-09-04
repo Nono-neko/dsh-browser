@@ -22,6 +22,12 @@ export interface RenderResult {
   title: string | undefined
 }
 
+/** Viewport used for one review screenshot. */
+export interface CaptureViewport {
+  width: number
+  height: number
+}
+
 /** Options passed to launch (or re-launch) the browser. */
 export interface BrowserOptions {
   /** Path to a Chromium-compatible executable; auto-detected when empty. */
@@ -184,6 +190,34 @@ export async function renderUrl(url: string, options: BrowserOptions): Promise<R
       // title() can throw on detached pages
     }
     return { html, finalUrl, title }
+  } finally {
+    if (page !== undefined) {
+      try { await page.close() } catch { /* already closed */ }
+    }
+  }
+}
+
+/** Capture one rendered viewport as PNG for a user-authored page review. */
+export async function captureUrl(
+  url: string,
+  options: BrowserOptions,
+  viewport: CaptureViewport,
+): Promise<Buffer> {
+  const instance = await getBrowser(options)
+  let page: Page | undefined
+  try {
+    page = await instance.newPage()
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    })
+    await page.setViewport({ width: viewport.width, height: viewport.height })
+    await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: RENDER_TIMEOUT_MS,
+    })
+    await new Promise(resolve => setTimeout(resolve, 500))
+    const screenshot = await page.screenshot({ type: 'png' })
+    return Buffer.from(screenshot)
   } finally {
     if (page !== undefined) {
       try { await page.close() } catch { /* already closed */ }

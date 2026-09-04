@@ -10,20 +10,27 @@
  * @module dsh-browser/host/routes
  */
 
-import { open, readdir, realpath } from 'node:fs/promises'
-import { extname, resolve as resolvePath } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { open, readdir } from 'node:fs/promises'
+import { extname } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BrowserEnvelope, BrowserEvent, BrowserError, WorkspaceListing } from '../core/types.ts'
-import { closeBrowser, renderUrl, type BrowserOptions } from './browser-pool.ts'
-import { isPathInside, type WorkspaceGate } from './gate.ts'
+import { captureUrl, closeBrowser, renderUrl, type BrowserOptions } from './browser-pool.ts'
+import type { WorkspaceGate } from './gate.ts'
+import { forbidden, isLoopbackPreviewResourceRequest, isLoopbackRequest, isPreviewToken, json, safely } from './http.ts'
+import { handleReviewRoute } from './review-routes.ts'
+import { reviewBridgeScript } from './review-bridge.ts'
+import type { ReviewStore } from './review-store.ts'
+import { handleSourceRoute } from './source-routes.ts'
+import { resolveInside } from './workspace-path.ts'
 
 const OK = <T>(value: T): BrowserEnvelope<T> => ({ ok: true, value })
 const FAIL = (error: BrowserError): BrowserEnvelope<never> => ({ ok: false, error })
 const BAD_REQUEST: BrowserError = { code: 'bad-request', message: 'malformed request' }
-const INTERNAL_ERROR: BrowserError = { code: 'internal', message: 'internal server error' }
+const SCREENSHOT_ROUTE = '/api/dsh-browser/screenshot'
 
 /** SSE keep-alive interval (proxies drop idle connections). */
 const HEARTBEAT_MS = 15_000
@@ -33,10 +40,17 @@ const MAX_FILE_BYTES = 64 * 1024 * 1024
 
 /** Maximum HTML size that gets a <base> injection (larger is streamed as-is). */
 const MAX_BASE_INJECT_BYTES = 8 * 1024 * 1024
+const MIN_CAPTURE_WIDTH = 320
+const MAX_CAPTURE_WIDTH = 1_920
+const MIN_CAPTURE_HEIGHT = 240
+const MAX_CAPTURE_HEIGHT = 1_080
 
 const FILE_ROUTE = '/api/dsh-browser/file'
 
 const PROXY_ROUTE = '/api/dsh-browser/proxy'
+
+const PREVIEW_TOKEN_TTL_MS = 30 * 60 * 1_000
+const MAX_PREVIEW_TOKENS = 256
 
 /**
  * Normalize a user-supplied proxy server string into a form Chromium's
@@ -57,6 +71,7 @@ export function normalizeProxyServer(raw: string | undefined): string | undefine
 interface FileTarget {
   root: string
   path: string
+  previewToken?: string
 }
 
 /** Encode the workspace root into one URL-safe path segment. */
@@ -70,9 +85,12 @@ function pathSegments(path: string): string {
 }
 
 /** A directory URL whose ordinary relative references stay on the file route. */
-function fileBaseUrl(root: string, directory: string): string {
+function fileBaseUrl(root: string, directory: string, previewToken?: string): string {
   const encodedDirectory = pathSegments(directory)
-  return `${FILE_ROUTE}/${rootToken(root)}/${encodedDirectory === '' ? '' : `${encodedDirectory}/`}`
+  const prefix = previewToken === undefined
+    ? `${FILE_ROUTE}/${rootToken(root)}`
+    : `${FILE_ROUTE}/preview/${previewToken}/${rootToken(root)}`
+  return `${prefix}/${encodedDirectory === '' ? '' : `${encodedDirectory}/`}`
 }
 
 /** Parse the legacy query form or the path form used by injected HTML bases. */
@@ -84,72 +102,28 @@ function fileTarget(url: URL): FileTarget | undefined {
   }
   if (!url.pathname.startsWith(`${FILE_ROUTE}/`)) return undefined
   const encoded = url.pathname.slice(FILE_ROUTE.length + 1)
-  const separator = encoded.indexOf('/')
-  if (separator <= 0 || separator === encoded.length - 1) return undefined
-  const encodedRoot = encoded.slice(0, separator)
+  const segments = encoded.split('/')
+  let previewToken: string | undefined
+  let encodedRoot: string
+  let encodedPath: string[]
+  if (segments[0] === 'preview') {
+    if (!isPreviewToken(segments[1] ?? null) || (segments[2] ?? '') === '' || segments.length < 4) return undefined
+    previewToken = segments[1]
+    encodedRoot = segments[2]
+    encodedPath = segments.slice(3)
+  } else {
+    if ((segments[0] ?? '') === '' || segments.length < 2) return undefined
+    encodedRoot = segments[0]
+    encodedPath = segments.slice(1)
+  }
   if (!/^[A-Za-z0-9_-]+$/.test(encodedRoot)) return undefined
   try {
     const root = Buffer.from(encodedRoot, 'base64url').toString('utf8')
     if (root === '' || rootToken(root) !== encodedRoot) return undefined
-    const path = encoded.slice(separator + 1).split('/').map(decodeURIComponent).join('/')
-    return path === '' ? undefined : { root, path }
+    const path = encodedPath.map(decodeURIComponent).join('/')
+    return path === '' ? undefined : { root, path, previewToken }
   } catch {
     return undefined
-  }
-}
-
-/**
- * Loopback trust fence: a loopback socket address AND a loopback Host header,
- * plus browser same-origin markers. The socket address is authoritative;
- * X-Forwarded-For is never trusted (matching dsh-ssh).
- */
-function isLoopbackRequest(request: IncomingMessage): boolean {
-  const address = request.socket.remoteAddress
-  if (address !== '127.0.0.1' && address !== '::1' && address !== '::ffff:127.0.0.1') return false
-  const host = request.headers.host
-  if (typeof host !== 'string') return false
-  let hostUrl: URL
-  try {
-    hostUrl = new URL(`http://${host}`)
-  } catch {
-    return false
-  }
-  if (hostUrl.hostname !== '127.0.0.1' && hostUrl.hostname !== 'localhost' && hostUrl.hostname !== '[::1]') return false
-  if (request.headers['sec-fetch-site'] === 'cross-site') return false
-  const origin = request.headers.origin
-  if (origin === undefined) return true
-  try {
-    return new URL(origin).host === hostUrl.host
-  } catch {
-    return false
-  }
-}
-
-/** Write the shared non-loopback rejection. */
-function forbidden(res: ServerResponse): void {
-  res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
-  res.end(JSON.stringify({ error: 'forbidden: loopback-only' }))
-}
-
-function json(res: ServerResponse, envelope: BrowserEnvelope<unknown>, status = 200): void {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  res.end(JSON.stringify(envelope))
-}
-
-/** Keep unexpected handler failures inside the route's stable JSON contract. */
-async function safely(
-  handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
-  try {
-    await handler(req, res)
-  } catch {
-    if (res.headersSent || res.writableEnded || res.destroyed) {
-      res.destroy()
-      return
-    }
-    json(res, FAIL(INTERNAL_ERROR), 500)
   }
 }
 
@@ -235,35 +209,28 @@ const MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.webp': 'image/webp',
   '.avif': 'image/avif',
+  '.apng': 'image/apng',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
   '.pdf': 'application/pdf',
 }
 
 /**
- * CSP for every served workspace document. `sandbox allow-scripts
- * allow-same-origin` lets local static pages run their own JS (canvas
- * animations, interactivity) while staying on the loopback origin so
- * relative references injected via <base> resolve through the file route.
- * Scripts are confined to 'self'; cross-origin fetch is allowed for
- * ordinary API calls but the document cannot frame or navigate the host.
+ * CSP for every served workspace document. Small HTML authorizes its own
+ * scripts with one response nonce while the iframe remains on an opaque
+ * origin; non-HTML documents stay inert.
  */
-const DOCUMENT_CSP = "sandbox allow-scripts allow-same-origin; default-src 'none'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline' http: https:; font-src 'self' data: http: https:; script-src 'self'; connect-src 'self' http: https:; media-src 'self' data: blob: http: https:"
+function documentCsp(nonce?: string): string {
+  const sandbox = nonce === undefined ? 'sandbox' : 'sandbox allow-scripts'
+  const scripts = nonce === undefined ? "'none'" : `'nonce-${nonce}' 'strict-dynamic' http: https:`
+  const scriptAttributes = nonce === undefined ? "'none'" : "'unsafe-inline'"
+  const connections = nonce === undefined ? "'none'" : 'http: https:'
+  return `${sandbox}; default-src 'none'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline' http: https:; font-src 'self' data: http: https:; script-src ${scripts}; script-src-attr ${scriptAttributes}; connect-src ${connections}; media-src 'self' data: blob: http: https:`
+}
 
-/** Resolve and verify a root-relative path against the gated workspace root. */
-async function resolveInside(canonicalRoot: string, root: string, rel: string): Promise<
-  { ok: true; abs: string; canonical: string }
-  | { ok: false; error: BrowserError }
-> {
-  const joined = resolvePath(root, rel === '' ? '.' : rel)
-  let canonical: string
-  try {
-    canonical = await realpath(joined)
-  } catch {
-    return { ok: false, error: { code: 'not-found', message: 'path does not resolve on disk' } }
-  }
-  if (!isPathInside(canonicalRoot, canonical)) {
-    return { ok: false, error: { code: 'path-outside-root', message: 'path escapes the workspace root' } }
-  }
-  return { ok: true, abs: joined, canonical }
+/** Attach the response nonce to every page-authored script tag. */
+function authorizePageScripts(html: string, nonce: string): string {
+  return html.replace(/<script\b(?![^>]*\bnonce\s*=)/gi, `<script nonce="${nonce}"`)
 }
 
 /**
@@ -341,20 +308,18 @@ async function handleProxy(
   // a new tab; ordinary links navigate the current tab. The parent window
   // listens for these messages and routes them through the proxy.
   const navInterceptor = `<script>(function(){var _o=window.open;window.open=function(u){if(u&&u!==''&&u!=='about:blank'){window.parent.postMessage({source:'dsh-browser',kind:'open',url:String(u)},'*');return null;}return _o.apply(this,arguments);};document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a');if(a&&a.href&&/^https?:/i.test(a.href)){e.preventDefault();var t=(a.target||'').toLowerCase();var kind=(t==='_blank'||t==='_new')?'open':'navigate';window.parent.postMessage({source:'dsh-browser',kind:kind,url:a.href},'*');}},true);})();</script>`
-  const headInject = baseTag + navInterceptor
-  if (!/<base\s/i.test(html)) {
-    html = /<head[^>]*>/i.test(html)
-      ? html.replace(/<head[^>]*>/i, match => match + headInject)
-      : headInject + html
-  }
+  const headInject = `${/<base\s/i.test(html) ? '' : baseTag}${navInterceptor}`
+  html = /<head[^>]*>/i.test(html)
+    ? html.replace(/<head[^>]*>/i, match => match + headInject)
+    : headInject + html
 
   const body = Buffer.from(html, 'utf8')
   res.writeHead(200, {
     'content-type': 'text/html; charset=utf-8',
     'cache-control': 'no-cache',
     'content-length': body.length.toString(),
-    // No CSP / X-Frame-Options — the whole point is to let this render in
-    // the panel iframe. The loopback fence keeps non-local clients out.
+    // No response CSP / X-Frame-Options — the panel applies an iframe sandbox
+    // without allow-same-origin, so rendered scripts cannot reach GUI APIs.
   })
   res.end(body)
 }
@@ -372,7 +337,38 @@ export function registerBrowserRoutes(
   gate: WorkspaceGate,
   broadcaster: OpenBroadcaster,
   browserOptions: BrowserOptions = {},
+  reviewStore?: ReviewStore,
 ): () => void {
+  const previewTokens = new Map<string, { root: string; expiresAt: number }>()
+
+  const prunePreviewTokens = (): void => {
+    const now = Date.now()
+    for (const [token, entry] of previewTokens) {
+      if (entry.expiresAt <= now) previewTokens.delete(token)
+    }
+    while (previewTokens.size > MAX_PREVIEW_TOKENS) {
+      const oldest = previewTokens.keys().next().value as string | undefined
+      if (oldest === undefined) break
+      previewTokens.delete(oldest)
+    }
+  }
+
+  const rememberPreviewToken = (token: string, root: string): void => {
+    prunePreviewTokens()
+    previewTokens.delete(token)
+    previewTokens.set(token, { root, expiresAt: Date.now() + PREVIEW_TOKEN_TTL_MS })
+  }
+
+  const acceptPreviewToken = (token: string, root: string): boolean => {
+    const entry = previewTokens.get(token)
+    if (entry === undefined || entry.root !== root || entry.expiresAt <= Date.now()) {
+      previewTokens.delete(token)
+      return false
+    }
+    entry.expiresAt = Date.now() + PREVIEW_TOKEN_TTL_MS
+    return true
+  }
+
   const handleList = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (!isLoopbackRequest(req)) {
       forbidden(res)
@@ -417,7 +413,9 @@ export function registerBrowserRoutes(
   }
 
   const handleFile = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    if (!isLoopbackRequest(req)) {
+    const trustedRequest = isLoopbackRequest(req)
+    const opaqueResourceRequest = !trustedRequest && isLoopbackPreviewResourceRequest(req)
+    if (!trustedRequest && !opaqueResourceRequest) {
       forbidden(res)
       return
     }
@@ -428,11 +426,21 @@ export function registerBrowserRoutes(
       return
     }
     const { root, path } = target
+    const tokenValue = url.searchParams.get('reviewToken')
+    const queryReviewToken = isPreviewToken(tokenValue) ? tokenValue : undefined
+    if (opaqueResourceRequest && (target.previewToken === undefined || !acceptPreviewToken(target.previewToken, root))) {
+      forbidden(res)
+      return
+    }
     const gated = await gate(root)
     if (!gated.ok) {
       json(res, FAIL(gated.error), 400)
       return
     }
+    if (trustedRequest && queryReviewToken !== undefined) {
+      rememberPreviewToken(queryReviewToken, gated.canonical)
+    }
+    const reviewToken = queryReviewToken ?? target.previewToken
     const resolved = await resolveInside(gated.canonical, root, path)
     if (!resolved.ok) {
       json(res, FAIL(resolved.error), resolved.error.code === 'not-found' ? 404 : 403)
@@ -462,19 +470,25 @@ export function registerBrowserRoutes(
         'cache-control': 'no-cache',
         'x-content-type-options': 'nosniff',
         'content-length': info.size,
-        'content-security-policy': DOCUMENT_CSP,
+        'content-security-policy': documentCsp(),
       }
       const isHtml = mime.startsWith('text/html')
       if (isHtml && info.size <= MAX_BASE_INJECT_BYTES) {
-        // Small HTML gets a <base> pointing at its own directory so relative
-        // images/styles resolve through this route; scripts stay blocked by CSP.
+        // Small HTML gets a capability-carrying <base> so relative assets can
+        // load from an opaque iframe without opening general cross-site fetch.
         let html = await file.readFile('utf8')
         const dirRel = path.replaceAll('\\', '/').split('/').slice(0, -1).join('/')
-        const baseUrl = fileBaseUrl(gated.canonical, dirRel)
-        const tag = `<base href="${baseUrl}">`
-        html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => `${match}${tag}`) : tag + html
+        const baseUrl = fileBaseUrl(gated.canonical, dirRel, reviewToken)
+        const nonce = randomUUID().replaceAll('-', '')
+        const inject = `<base href="${baseUrl}">${reviewBridgeScript(reviewToken, nonce)}`
+        html = authorizePageScripts(html, nonce)
+        html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, match => `${match}${inject}`) : inject + html
         const body = Buffer.from(html, 'utf8')
-        res.writeHead(200, { ...baseHeaders, 'content-length': body.length })
+        res.writeHead(200, {
+          ...baseHeaders,
+          'content-length': body.length,
+          'content-security-policy': documentCsp(nonce),
+        })
         res.end(body)
         return
       }
@@ -482,6 +496,76 @@ export function registerBrowserRoutes(
       await pipeline(file.createReadStream({ autoClose: false }), res)
     } finally {
       await file.close()
+    }
+  }
+
+  const handleScreenshot = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    if (!isLoopbackRequest(req)) {
+      forbidden(res)
+      return
+    }
+    if (req.method !== 'GET') {
+      res.writeHead(405, { 'content-type': 'application/json; charset=utf-8', allow: 'GET' })
+      res.end(JSON.stringify({ error: 'screenshot only supports GET requests' }))
+      return
+    }
+    const requestUrl = new URL(req.url ?? '/', 'http://x')
+    const root = requestUrl.searchParams.get('root') ?? ''
+    const rawTarget = requestUrl.searchParams.get('url') ?? ''
+    const width = Number(requestUrl.searchParams.get('width'))
+    const height = Number(requestUrl.searchParams.get('height'))
+    if (root === '' || rawTarget === '' || !Number.isInteger(width) || !Number.isInteger(height)
+      || width < MIN_CAPTURE_WIDTH || width > MAX_CAPTURE_WIDTH
+      || height < MIN_CAPTURE_HEIGHT || height > MAX_CAPTURE_HEIGHT) {
+      json(res, FAIL(BAD_REQUEST), 400)
+      return
+    }
+    const gated = await gate(root)
+    if (!gated.ok) {
+      json(res, FAIL(gated.error), 400)
+      return
+    }
+    const host = req.headers.host
+    if (typeof host !== 'string') {
+      json(res, FAIL(BAD_REQUEST), 400)
+      return
+    }
+    const localOrigin = `http://${host}`
+    let target: URL
+    try {
+      target = new URL(rawTarget, localOrigin)
+    } catch {
+      json(res, FAIL(BAD_REQUEST), 400)
+      return
+    }
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      json(res, FAIL(BAD_REQUEST), 400)
+      return
+    }
+    if (target.origin === localOrigin) {
+      if (target.pathname !== FILE_ROUTE) {
+        json(res, FAIL(BAD_REQUEST), 400)
+        return
+      }
+      const targetRoot = target.searchParams.get('root') ?? ''
+      const targetGate = await gate(targetRoot)
+      if (!targetGate.ok || targetGate.canonical !== gated.canonical) {
+        json(res, FAIL({ code: 'workspace-unknown', message: 'screenshot target is outside the workspace' }), 400)
+        return
+      }
+      target.searchParams.set('reviewToken', randomUUID().replaceAll('-', ''))
+    }
+    try {
+      const image = await captureUrl(target.toString(), browserOptions, { width, height })
+      res.writeHead(200, {
+        'content-type': 'image/png',
+        'cache-control': 'no-store',
+        'content-length': image.byteLength,
+        'x-content-type-options': 'nosniff',
+      })
+      res.end(image)
+    } catch {
+      json(res, FAIL({ code: 'internal', message: 'failed to capture the review page' }), 502)
     }
   }
 
@@ -509,6 +593,23 @@ export function registerBrowserRoutes(
         await handleFile(req, res)
         return
       }
+      if (url.pathname === SCREENSHOT_ROUTE) {
+        await handleScreenshot(req, res)
+        return
+      }
+      if (reviewStore !== undefined && (
+        url.pathname === '/api/dsh-browser/comments'
+        || url.pathname === '/api/dsh-browser/comments/resolve'
+        || url.pathname === '/api/dsh-browser/review-batches'
+        || url.pathname === '/api/dsh-browser/review-batches/reopen'
+      )) {
+        await handleReviewRoute(req, res, gate, reviewStore)
+        return
+      }
+      if (url.pathname === '/api/dsh-browser/source') {
+        await handleSourceRoute(req, res, gate)
+        return
+      }
       res.writeHead(404)
       res.end()
     }, req, res) }))
@@ -524,6 +625,7 @@ export function registerBrowserRoutes(
     if (disposed) return
     disposed = true
     for (const dispose of disposers.reverse()) dispose()
+    previewTokens.clear()
     broadcaster.dispose()
     void closeBrowser()
   }

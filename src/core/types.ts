@@ -20,6 +20,7 @@ export interface BrowserError {
     | 'not-found'
     | 'is-directory'
     | 'too-large'
+    | 'conflict'
   message: string
 }
 

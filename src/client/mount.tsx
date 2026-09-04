@@ -19,6 +19,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { PanelController } from './controller.ts'
 import type { TabsStore } from './store.ts'
 import { BrowserPanel } from './panel/BrowserPanel.tsx'
+import type { ReviewScreenshot } from '../core/review.ts'
 import css from './panel/panel.module.css'
 
 /** The injected panel container (kept in the DOM, hidden when inactive). */
@@ -44,6 +45,12 @@ export interface BrowserPanelDeps {
   maxTabs: () => number
   /** Locale-bound translate for the panel copy. */
   t: (key: string) => string
+  /** Confirmed review handoff: create one batch and queue a user Agent turn. */
+  requestAgentReview: (
+    workspaceRoot: string,
+    commentIds: string[],
+    screenshots: ReviewScreenshot[],
+  ) => Promise<string>
 }
 
 /**

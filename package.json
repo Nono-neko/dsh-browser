@@ -1,7 +1,7 @@
 {
   "name": "@nono-neko/dsh-browser",
   "version": "0.2.0",
-  "description": "Embedded browser for the DSH web and desktop GUI: a sidebar entry plus a center-column panel with multi-tab iframe browsing (address bar, back/forward, per-workspace persistence), a workspace file viewer, agent tools (browser_open, browser_read), a plugin settings card, and a system-prompt announcement. Hot-pluggable as a standalone cordis bundle — mounted via `dsh plugin --profile <name> add link:<repo>`. Requires DSH v0.1.1-rc.1 or later.",
+  "description": "Embedded browser for the DSH web and desktop GUI with multi-tab browsing, workspace frontend review comments, a lightweight CodeMirror editor, and agent tools. Hot-pluggable as a standalone cordis bundle with no DSH source changes. Requires DSH v0.1.1-rc.1 or later.",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "engines": {
@@ -50,11 +50,16 @@
     "react-dom": "^18.2.0"
   },
   "dependencies": {
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "codemirror": "^6.0.2",
     "puppeteer-core": "^23.0.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/schemastery": "^3.18.1",
     "@deepseek-ai/dsh-client-connection": "^0.1.1-rc.1",
     "@deepseek-ai/dsh-client-locale": "^0.1.1-rc.1",
     "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.1",
@@ -66,6 +71,7 @@
     "@deepseek-ai/dsh-system-prompt": "^0.1.1-rc.1",
     "@deepseek-ai/dsh-tools": "^0.1.1-rc.1",
     "@deepseek-ai/dsh-workspace": "^0.1.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "^18.3.5",

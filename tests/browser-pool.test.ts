@@ -14,6 +14,7 @@ const mockPage = {
   content: vi.fn(),
   url: vi.fn(),
   title: vi.fn(),
+  screenshot: vi.fn(),
   close: vi.fn(),
 }
 
@@ -22,7 +23,13 @@ const mockBrowser = {
   close: vi.fn(),
 }
 
-const mockLaunch = vi.fn(() => mockBrowser)
+interface MockLaunchOptions {
+  executablePath?: string
+  headless?: boolean
+  args?: string[]
+}
+
+const mockLaunch = vi.fn((_options: MockLaunchOptions) => mockBrowser)
 
 vi.mock('puppeteer-core', () => ({
   default: { launch: mockLaunch },
@@ -40,7 +47,7 @@ vi.mock('node:fs', async (importOriginal) => {
 })
 
 import { existsSync } from 'node:fs'
-import { closeBrowser, detectExecutablePath, getBrowser, renderUrl } from '../src/host/browser-pool.ts'
+import { captureUrl, closeBrowser, detectExecutablePath, getBrowser, renderUrl } from '../src/host/browser-pool.ts'
 
 // --- helpers ---------------------------------------------------------------
 
@@ -51,6 +58,7 @@ function resetPageMocks(): void {
   mockPage.content.mockReset()
   mockPage.url.mockReset()
   mockPage.title.mockReset()
+  mockPage.screenshot.mockReset()
   mockPage.close.mockReset()
   mockBrowser.newPage.mockReset()
   mockBrowser.close.mockReset()
@@ -171,6 +179,24 @@ describe('renderUrl', () => {
     await renderUrl('https://example.com/2', { executablePath: '/fake/chrome' })
     expect(mockBrowser.newPage).toHaveBeenCalledTimes(2)
     expect(mockPage.close).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('captureUrl', () => {
+  it('captures the requested viewport as PNG and closes the page', async () => {
+    mockPage.goto.mockResolvedValue(undefined)
+    mockPage.screenshot.mockResolvedValue(Uint8Array.from([1, 2, 3]))
+
+    const result = await captureUrl(
+      'https://example.com/',
+      { executablePath: '/fake/chrome' },
+      { width: 900, height: 640 },
+    )
+
+    expect([...result]).toEqual([1, 2, 3])
+    expect(mockPage.setViewport).toHaveBeenCalledWith({ width: 900, height: 640 })
+    expect(mockPage.screenshot).toHaveBeenCalledWith({ type: 'png' })
+    expect(mockPage.close).toHaveBeenCalledTimes(1)
   })
 })
 

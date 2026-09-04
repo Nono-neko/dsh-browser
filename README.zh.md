@@ -3,13 +3,14 @@
 [English](README.md) | 中文
 
 > DSH Web GUI 的内置浏览器：在聊天界面里浏览网页与工作区文件——多标签、地址栏、
-> 标签页按工作区持久化——并提供 agent 工具（`browser_open`、`browser_read`）。
+> 标签页按工作区持久化、页面区域批注与轻量工作区编辑器——并提供 agent 工具
+> （`browser_open`、`browser_read`、`browser_review`）。
 > 页面由宿主端的无头 Chromium（Puppeteer）渲染，因此发送 `X-Frame-Options`
 > 的站点也能正常加载。
 
 DeepSeek Harness（DSH）的外部插件包，单包双半区 cordis bundle：host 半区拥有
 agent 工具、`/api/dsh-browser` 路由族（Puppeteer 页面代理 + SSE 打开事件流 +
-工作区文件列表/读取）、设置命名空间与系统提示词公告；browser 半区渲染侧边栏
+工作区文件列表/读取/编辑 + 批注存储）、设置命名空间与系统提示词公告；browser 半区渲染侧边栏
 入口、多标签面板与插件设置卡。热插拔挂载——
 `dsh plugin --profile <name> add link:<repo>`。
 
@@ -42,9 +43,26 @@ Windows、macOS、Linux 上自动检测可执行文件路径，也可在设置�
   上一级按钮）；点击文件经宿主文件路由在面板中打开。HTML 预览注入 `<base>`
   使相对图片/样式可解析，并以 CSP `sandbox` 头保证被预览文件绝不能在 GUI
   源中执行脚本。
+- **前端区域批注**：在工作区 HTML 预览中开启「批注」时，浏览器会在已经挂载的
+  iframe 内启用受能力令牌约束的桥接脚本。进入选点既不会导航或重新加载页面，
+  也不会为选点截图，因此当前组件状态、动画与滚动位置会继续保留。点击任意可见
+  位置即可选中对应 DOM 元素，编号标记和评论框显示在浏览器外层，并在页面顶层
+  滚动时继续对齐。代理打开的开发服务器页面采用兼容的外层选点方式：可用时先
+  冻结截图并支持拖拽框选更大区域，截图不可用时降级为实时坐标层。连续添加一条
+  或多条意见后，由用户明确确认，再一次性交给当前 Agent。交付前，误加的草稿
+  评论可经二次确认后删除；已经交给 Agent 的评论会保留在批注历史中。每条批注
+  包含可信的用户文字，以及不可信的页面 URL、选择器、附近文字/HTML、视口矩形、
+  文档尺寸和选点时滚动位置。交付时，Host 会尽力为每个被批注页面截取一张图片，
+  作为 Agent 的可选上下文；截图失败不会阻止评论交付。批注仅在当前 DSH host
+  生命周期内存储；若 Agent 消息或图片附件未能入队，批次会恢复成草稿，用户可重试。
+- **轻量工作区编辑器**：「编辑器」抽屉可浏览已注册工作区，并用 CodeMirror
+  打开文本文件，支持常见前端格式的语法解析；常见 PNG/JPEG/GIF/WebP/AVIF/
+  SVG/BMP/ICO 图片以只读、自适应方式预览。文本保存时校验内容哈希，发现文件已
+  被其他操作修改便拒绝覆盖。完整 VS Code 体验留待后续版本。
 - **agent 工具**：`browser_open` 把网页推送到面板（新开标签并聚焦面板）；
   `browser_read` 由宿主抓取网页并返回可读正文文本（静态 HTML 近似提取，
-  不执行 JS）。
+  不执行 JS）；`browser_review` 读取用户已确认的批注批次及页面区域坐标，
+  `browser_review_resolve` 将完成的批注标记为已解决。
 - **设置卡**：Web 版在「设置 → 插件」区新增「内置浏览器」卡片；Desktop 版
   在左侧导航栏新增「内置浏览器」独立设置页。两者均支持暂存编辑、保存/放弃、
   继承/恢复默认语义。字段：启用开关、agent 播报、主页地址、标签上限、内网访问
@@ -86,7 +104,7 @@ dsh plugin --profile <name> remove link:<repo>
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `enabled` | boolean | `true` | 挂载侧边栏入口、工具与代理路由。 |
-| `announceToAgent` | boolean | `true` | 注入 system-prompt 段落，告知 agent `browser_open` / `browser_read` 的存在。 |
+| `announceToAgent` | boolean | `true` | 注入 system-prompt 段落，告知 agent 浏览器与批注工具的存在。 |
 | `defaultHome` | string | `https://www.bing.com` | 新标签页 / 主页按钮加载的 URL。 |
 | `maxTabs` | number | `10` | 每个工作区的标签上限，超出后裁剪最久未激活的标签。 |
 | `allowPrivateAccess` | boolean | `false` | 允许 `browser_read` 访问内网 / loopback 地址。 |
@@ -164,26 +182,39 @@ pnpm test       # vitest
 
 ## 安全模型
 
-- **Loopback 围栏**：所有 `/api/dsh-browser` 路由（代理、SSE、文件）拒绝非
+- **Loopback 围栏**：所有 `/api/dsh-browser` 路由（代理、SSE、文件、批注截图、
+  源码编辑与批注）拒绝非
   loopback 客户端（套接字地址 + Host 头 + 同源标记）。LAN 暴露的 dsh web
   无法向未配对设备提供工作区文件或代理服务。
-- **工作区门禁**：文件列表与读取先对请求根做 realpath 规范化并要求其为已
+- **工作区门禁**：文件列表、读取、批注截图、批注存储与源码编辑先对请求根做 realpath 规范化并要求其为已
   注册工作区（或位于其内）；每个请求路径解析后再次校验，符号链接无法逃逸。
 - **预览 HTML 沙箱**：工作区预览 HTML 以 `Content-Security-Policy: sandbox`
-  头提供——脚本绝不在持有会话 loopback API 权限的 GUI 源中执行。
-- **代理页面不设沙箱**：Puppeteer 渲染的 HTML 不带 CSP / X-Frame-Options，
-  以便在面板 iframe 中渲染。Loopback 围栏是安全边界——仅本地客户端可访问
-  代理路由。代理页面无法访问 GUI 源的 API，因为它们由不同路径提供，浏览器
-  同源策略适用于 iframe 内容。
+  和不透明 iframe 来源运行。host 为页面已有脚本统一添加本次响应的随机 nonce，
+  使本地样式与交互可用，但不给页面访问 GUI API 的权限。不透明
+  来源的资源 GET 必须同时具备浏览器判定的子资源类型，以及由首次同源文档加载
+  登记的短时随机能力令牌；脚本 `fetch()` 与所有写接口继续受普通同源围栏保护。
+  同一能力令牌也用于限定实时批注桥接；父页面只接受来自当前活动 iframe 且令牌
+  匹配的消息，并把桥接上报的选择器、属性与矩形全部视为不可信页面上下文。
+- **代理页面使用不透明来源 iframe 沙箱**：Puppeteer 渲染的 HTML 响应不带
+  CSP / X-Frame-Options，面板 iframe 允许脚本和表单，但刻意不授予
+  `allow-same-origin`。页面脚本因而无法读取父 GUI 或调用其 loopback API。
+  这些代理页面的点击选点、拖拽框选与编号标记完全位于浏览器外层，不需要读取
+  frame 内的 DOM。
+  页面 URL 与
+  所有页面衍生上下文始终不可信，绝不视为 Agent 指令。
+- **源码写入受保护**：编辑器只接受不超过 4 MB 的文本文件，真实路径必须位于
+  已注册工作区内，符号链接/路径逃逸会被拒绝；保存前校验预期 SHA-256 哈希，
+  并以原子替换方式写入。
 - **browser_read 的 SSRF 防线**：请求发出前先经 DNS 解析目标主机名，每个
   地址都必须是公网地址（内网/回环/链路本地/保留段一律拒绝）。重定向逐跳
   手动跟随并复检，公网 URL 跳转到内网地址无法绕过。设置中的
   `allowPrivateAccess` 是显式豁免，风险自负。
 - **代理路由使用 Puppeteer**：无头 Chromium 抓取页面，因此 `browser_read`
-  的 SSRF 防线不适用于面板代理。`proxyServer` 设置允许你通过本地 VPN /
-  代理路由浏览流量。
+  的 SSRF 防线不适用于面板代理或批注截图。`proxyServer` 设置允许你通过本地
+  VPN / 代理路由浏览流量；截图视口限制在 1920 × 1080 像素内。
 - **大小与超时上限**：`browser_read` 响应体超过 2 MB 在读入前即报错；超过
-  64 MB 的工作区文件拒绝提供；每次 Puppeteer 渲染 30 秒超时。
+  64 MB 的工作区文件拒绝提供；每次 Puppeteer 渲染 30 秒超时；编辑器源码
+  文件上限为 4 MB。
 
 ## 限制
 
@@ -196,6 +227,12 @@ pnpm test       # vitest
   普通 `<a>` 链接会被拦截并重新走代理。
 - **`browser_read` 只能看到静态 HTML**：JS 渲染的页面拿不到客户端渲染内容，
   也无法使用你的登录态。
+- **实时 DOM 选点仅支持工作区 HTML**：代理打开的开发服务器页面仍使用截图/
+  坐标选点，因此其瞬时动画状态可能与稍后附加的截图不完全一致。
+- **工作区交付截图来自一次新的无头渲染**：它不会重新加载或移动用户正在看的
+  iframe，但附件中的瞬时动画与滚动状态可能不同于用户点击时的实时页面；结构化
+  选择器、点击坐标和选点时滚动位置才是定位依据。
+- **批注尚未持久化**：DSH host 重启后，评论和批次会被清空。
 - **浏览会在宿主机器上消耗真实网络流量。**
 
 ## 许可证

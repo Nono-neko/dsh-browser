@@ -16,6 +16,8 @@
  * reduced to what a single standalone package needs.
  */
 import { readFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { dirname, isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
@@ -53,6 +55,22 @@ function packageRoot(): string {
 
 const PACKAGE_ROOT = packageRoot()
 
+const packageVersion = (JSON.parse(readFileSync(resolvePath(PACKAGE_ROOT, 'package.json'), 'utf8')) as { version: string }).version
+function buildRevision(): string | undefined {
+  // Watch builds can change after config evaluation; never stamp a stale SHA.
+  if (process.argv.some(arg => arg === '--watch' || arg === '-w' || arg.startsWith('--watch='))) return undefined
+  if (!existsSync(resolvePath(PACKAGE_ROOT, '.git'))) return undefined
+  try {
+    const git = (args: string[]) => execFileSync('git', ['-C', PACKAGE_ROOT, ...args], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000, windowsHide: true,
+    }).trim()
+    // Uncommitted builds cannot be compared truthfully with a remote commit.
+    if (git(['status', '--porcelain']) !== '') return undefined
+    const revision = git(['rev-parse', 'HEAD'])
+    return /^[a-f0-9]{40}$/.test(revision) ? revision : undefined
+  } catch { return undefined }
+}
+
 /** Virtual-id wrapper keeping module CSS away from tsdown's own css pipeline. */
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
@@ -85,6 +103,10 @@ const libConfig: UserConfig = {
   fixedExtension: false,
   dts: false,
   clean: false,
+  define: {
+    __DSH_BROWSER_VERSION__: JSON.stringify(packageVersion),
+    __DSH_BROWSER_REVISION__: JSON.stringify(buildRevision()) ?? 'undefined',
+  },
   // Every @deepseek-ai/* value import stays external: the dsh profile tree
   // owns the runtime instances (the same stance the dsh-web-ui family takes
   // in its node-half builds). Local code and non-SDK deps inline.

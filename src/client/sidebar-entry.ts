@@ -19,6 +19,7 @@
 import type { PanelController } from './controller.ts'
 import { tt } from './translate.ts'
 import css from './panel/panel.module.css'
+import type { UpdatesStore } from './updates.ts'
 
 /** Stable data attribute identifying the injected entry row. */
 export const ENTRY_SELECTOR = '[data-dsh-browser-entry]'
@@ -64,7 +65,7 @@ function createEntry(controller: PanelController): HTMLButtonElement {
 }
 
 /** Re-insert the entry after the New Session row (after any family entries). */
-function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
+function placeEntry(root: HTMLElement, entry: HTMLElement): boolean {
   const button = newSessionButton(root)
   if (button === undefined) return false
   if (entry.parentElement !== root) {
@@ -89,8 +90,42 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
  * @param controller - the panel controller the entry toggles.
  * @returns disposer removing the entry and its observers.
  */
-export function mountSidebarEntry(controller: PanelController): () => void {
-  const entry = createEntry(controller)
+export function mountSidebarEntry(
+  controller: PanelController,
+  updates?: { store: UpdatesStore; open: () => void },
+): () => void {
+  const toggle = createEntry(controller)
+  const entry = document.createElement('div')
+  delete toggle.dataset.dshBrowserEntry
+  entry.dataset.dshBrowserEntry = ''
+  entry.className = css.sidebarEntryRow
+  entry.appendChild(toggle)
+  let unsubscribeUpdates: (() => void) | undefined
+  if (updates) {
+    const badge = document.createElement('button')
+    badge.type = 'button'
+    badge.className = css.entryUpdate
+    badge.dataset.dshBrowserUpdates = ''
+    const caption = document.createElement('span')
+    caption.className = css.entryUpdateLabel
+    const icon = document.createElement('span')
+    icon.className = css.entryUpdateIcon
+    icon.setAttribute('aria-hidden', 'true')
+    icon.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 6.5A5.5 5.5 0 1 0 13 10"/><path d="M13.5 2.5v4h-4"/></svg>'
+    badge.append(caption, icon)
+    const syncUpdate = (): void => {
+      const offer = updates.store.visibleOffer()
+      const label = tt(offer ? 'updates.available' : 'updates.check')
+      caption.textContent = label
+      badge.setAttribute('aria-label', tt('updates.title') + ': ' + label + (offer ? ' ' + offer.version : ''))
+      badge.title = badge.getAttribute('aria-label') ?? label
+      badge.dataset.available = offer ? 'true' : 'false'
+    }
+    badge.addEventListener('click', updates.open)
+    unsubscribeUpdates = updates.store.subscribe(syncUpdate)
+    syncUpdate()
+    entry.appendChild(badge)
+  }
   let root: HTMLElement | undefined
   let placed = false
   let rootObserver: MutationObserver | undefined
@@ -135,8 +170,8 @@ export function mountSidebarEntry(controller: PanelController): () => void {
 
   // Reflect the panel's open state on the row (active highlight).
   const syncActive = (): void => {
-    if (controller.getSnapshot().panelOpen) entry.dataset.active = 'true'
-    else delete entry.dataset.active
+    if (controller.getSnapshot().panelOpen) toggle.dataset.active = 'true'
+    else delete toggle.dataset.active
   }
   const unsubscribe = controller.subscribe(syncActive)
   syncActive()
@@ -147,6 +182,7 @@ export function mountSidebarEntry(controller: PanelController): () => void {
     waitObserver.disconnect()
     rootObserver?.disconnect()
     unsubscribe()
+    unsubscribeUpdates?.()
     entry.remove()
   }
 }

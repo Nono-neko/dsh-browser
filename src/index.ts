@@ -9,6 +9,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { fileURLToPath } from 'node:url'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -21,6 +22,8 @@ import { browserOpenTool, browserReadTool, readPage } from './host/tools.ts'
 import { ReviewStore } from './host/review-store.ts'
 import { browserReviewResolveTool, browserReviewTool } from './host/review-tools.ts'
 import type { BrowserConfig } from './core/types.ts'
+import { detectInstallation, UpdateService } from './host/update-service.ts'
+import { BUILD_REVISION, BUILD_VERSION } from './host/build-info.ts'
 
 /** Stable cordis plugin name. */
 export const name = 'dsh-browser'
@@ -37,6 +40,8 @@ export interface Config extends BrowserConfig {}
 export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   announceToAgent: z.boolean().default(true),
+  autoCheckUpdates: z.boolean().default(true),
+  followRepositoryUpdates: z.boolean().default(false),
   defaultHome: z.string().default('https://www.bing.com'),
   maxTabs: z.number().step(1).min(2).max(30).default(10),
   allowPrivateAccess: z.boolean().default(false),
@@ -48,6 +53,8 @@ export const Config: z<Config> = z.object({
 const DEFAULTS = {
   enabled: true,
   announceToAgent: true,
+  autoCheckUpdates: true,
+  followRepositoryUpdates: false,
   defaultHome: 'https://www.bing.com',
   maxTabs: 10,
   allowPrivateAccess: false,
@@ -73,6 +80,8 @@ export function apply(ctx: Context, config?: Config): void {
   const resolve = (): {
     enabled: boolean
     announceToAgent: boolean
+    autoCheckUpdates: boolean
+    followRepositoryUpdates: boolean
     defaultHome: string
     maxTabs: number
     allowPrivateAccess: boolean
@@ -81,6 +90,8 @@ export function apply(ctx: Context, config?: Config): void {
   } => ({
     enabled: current().enabled ?? DEFAULTS.enabled,
     announceToAgent: current().announceToAgent ?? DEFAULTS.announceToAgent,
+    autoCheckUpdates: current().autoCheckUpdates ?? DEFAULTS.autoCheckUpdates,
+    followRepositoryUpdates: current().followRepositoryUpdates ?? DEFAULTS.followRepositoryUpdates,
     defaultHome: current().defaultHome ?? DEFAULTS.defaultHome,
     maxTabs: current().maxTabs ?? DEFAULTS.maxTabs,
     allowPrivateAccess: current().allowPrivateAccess ?? DEFAULTS.allowPrivateAccess,
@@ -90,6 +101,12 @@ export function apply(ctx: Context, config?: Config): void {
 
   const broadcaster = new OpenBroadcaster()
   const reviewStore = new ReviewStore()
+  const updates = new UpdateService({
+    currentVersion: BUILD_VERSION,
+    currentRevision: BUILD_REVISION,
+    installation: detectInstallation(fileURLToPath(new URL('../', import.meta.url))),
+  })
+  ctx.effect(() => () => { updates.dispose() }, 'dsh-browser: updates')
   ctx.effect(() => () => { broadcaster.dispose() }, 'dsh-browser: broadcaster')
 
   let disposeRoutes: (() => void) | undefined
@@ -113,6 +130,7 @@ export function apply(ctx: Context, config?: Config): void {
       disposeTools = undefined
     }
     const value = resolve()
+    updates.configure(value.enabled, value.autoCheckUpdates, value.followRepositoryUpdates)
     if (!value.enabled) return
     if (value.announceToAgent) {
       disposeSection = ctx.systemPrompt.section({
@@ -126,7 +144,7 @@ export function apply(ctx: Context, config?: Config): void {
         executablePath: value.browserExecutable !== '' ? value.browserExecutable : undefined,
         proxyServer: normalizeProxyServer(value.proxyServer),
         allowPrivate: value.allowPrivateAccess,
-      }, reviewStore),
+      }, reviewStore, updates),
       'dsh-browser: routes',
     )
     const tools = [

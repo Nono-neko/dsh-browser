@@ -216,6 +216,26 @@ export function BrowserSettingsCard(props: BrowserSettingsCardProps): JSX.Elemen
             setBoolean={setBoolean}
             resetField={resetField}
           />
+          <BooleanRow
+            field="autoCheckUpdates"
+            label={t('settings.autoCheckUpdates')}
+            hint={t('settings.autoCheckUpdatesHint')}
+            state={state.fields.autoCheckUpdates}
+            writable={state.writable}
+            t={t}
+            setBoolean={setBoolean}
+            resetField={resetField}
+          />
+          <BooleanRow
+            field="followRepositoryUpdates"
+            label={t('settings.followRepositoryUpdates')}
+            hint={t('settings.followRepositoryUpdatesHint')}
+            state={state.fields.followRepositoryUpdates}
+            writable={state.writable}
+            t={t}
+            setBoolean={setBoolean}
+            resetField={resetField}
+          />
           <TextRow
             field="defaultHome"
             label={t('settings.defaultHome')}
@@ -389,6 +409,8 @@ export function BrowserSettingsPage(props: any): JSX.Element {
         {renderBoolean('enabled', 'settings.enabled', 'settings.enabledHint')}
         {renderBoolean('announceToAgent', 'settings.announceToAgent', 'settings.announceToAgentHint')}
         {renderBoolean('allowPrivateAccess', 'settings.allowPrivate', 'settings.allowPrivateHint')}
+        {renderBoolean('autoCheckUpdates', 'settings.autoCheckUpdates', 'settings.autoCheckUpdatesHint')}
+        {renderBoolean('followRepositoryUpdates', 'settings.followRepositoryUpdates', 'settings.followRepositoryUpdatesHint')}
         {renderText('defaultHome', 'settings.defaultHome', 'settings.defaultHomeHint')}
         {renderText('maxTabs', 'settings.maxTabs', 'settings.maxTabsHint')}
         {renderText('browserExecutable', 'settings.browserExecutable', 'settings.browserExecutableHint')}

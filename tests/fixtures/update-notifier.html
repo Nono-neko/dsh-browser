@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>浏览器更新提示 - 本地验证</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; --dsw-alias-bg-base: #171e30; --dsw-alias-label-primary: #e0e5f2; --dsw-alias-label-secondary: #9aa8c3; --dsw-alias-border-primary: #36405a; --dsw-specific-sidebar-nav-item-hover: #ffffff0d; --dsw-specific-sidebar-nav-item-active: #8192cf30; }
+  :root[data-theme='light'] { color-scheme: light; --dsw-alias-bg-base: #fff; --dsw-alias-label-primary: #20283a; --dsw-alias-label-secondary: #65728c; --dsw-alias-border-primary: #dce0e5; --dsw-specific-sidebar-nav-item-hover: #00000008; --dsw-specific-sidebar-nav-item-active: #5a74ce18; }
+  body { margin: 0; height: 100dvh; display: grid; grid-template-columns: 245px 1fr; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: 14px/1.6 system-ui, sans-serif; }
+  aside { padding: 18px 12px; border-right: 1px solid var(--dsw-alias-border-primary); }
+  .newSession { width: 100%; padding: 8px; margin: 18px 0 10px; }
+  main { padding: 24px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 20px; margin: 0; } p { margin: 0; }
+  button, select { font: inherit; cursor: pointer; }
+  iframe { width: 100%; flex: 1; border: 1px solid var(--dsw-alias-border-primary); border-radius: 14px; background: #0f1625; }
+  label { display: inline-flex; gap: 8px; align-items: center; margin-right: 16px; }
+  @media (max-width: 600px) { body { grid-template-columns: 150px 1fr; } main { padding: 12px; } }
+</style>
+<body>
+  <aside data-pane="sidebar"><div>
+    <b>DSH / 本地验证</b>
+    <button class="newSession" type="button">新会话</button>
+    <section><p>工作区</p><p>动态预览示例</p></section>
+  </div></aside>
+  <main>
+    <h1>更新提示验证页</h1>
+    <p>使用模拟版本数据，不会安装更新。点击侧边栏更新按钮后，下面的动画和滚动状态应保持不变。</p>
+    <div>
+      <label>状态<select id="scenario"><option value="available">可更新</option><option value="latest">无新版本</option><option value="failed">网络失败</option><option value="lag">npm 尚未同步</option><option value="repository">仓库新提交</option></select></label>
+      <label>主题<select id="theme"><option value="dark">深色</option><option value="light">浅色</option></select></label>
+      <label>语言<select id="language"><option value="zh">中文</option><option value="en">English</option></select></label>
+    </div>
+    <iframe title="动态网页预览"></iframe>
+  </main>
+  <script type="module" src="./update-notifier.ts"></script>
+</body>
+</html>

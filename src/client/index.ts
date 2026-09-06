@@ -32,6 +32,8 @@ import { en, zh, type BrowserKey } from './locales.ts'
 import { mountPanel } from './mount.tsx'
 import { bindTabPersistPagehide, createTabPersist, readPersisted } from './persist.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
+import { UpdatesStore } from './updates.ts'
+import { mountUpdateDialog } from './UpdateDialog.tsx'
 import { initialState, makeTab, TabsStore } from './store.ts'
 import { setTranslator } from './translate.ts'
 import { BrowserSettingsForm } from './settings/card-form.ts'
@@ -54,6 +56,8 @@ const SETTINGS_NS = 'dsh-browser'
 interface BrowserSettings {
   enabled?: boolean
   announceToAgent?: boolean
+  autoCheckUpdates?: boolean
+  followRepositoryUpdates?: boolean
   defaultHome?: string
   maxTabs?: number
   allowPrivateAccess?: boolean
@@ -96,6 +100,7 @@ export function apply(ctx: ClientContext): void {
   // The tabs store survives the enabled toggle; only the DOM surfaces and the
   // event subscription ride the syncUi effect.
   const controller = new PanelController()
+  const updates = new UpdatesStore()
   const store = new TabsStore(() => settings().maxTabs)
   const persist = createTabPersist()
   const disposePagehide = bindTabPersistPagehide(persist)
@@ -147,7 +152,15 @@ export function apply(ctx: ClientContext): void {
           controller.open()
         }))
         try {
-          disposers.push(mountSidebarEntry(controller))
+          // Update failures must not prevent the browser panel from mounting.
+          let openUpdates: (() => void) | undefined
+          try {
+            disposers.push(updates.start())
+            const dialog = mountUpdateDialog(updates)
+            disposers.push(dialog.dispose)
+            openUpdates = dialog.open
+          } catch (error) { console.warn('[dsh-browser] update UI failed:', error) }
+          disposers.push(mountSidebarEntry(controller, openUpdates ? { store: updates, open: openUpdates } : undefined))
           disposers.push(mountPanel(controller, store, {
             defaultHome: () => settings().defaultHome,
             maxTabs: () => settings().maxTabs,
@@ -221,6 +234,8 @@ export function apply(ctx: ClientContext): void {
   const formFields = [
     { field: 'enabled', kind: 'boolean' as const },
     { field: 'announceToAgent', kind: 'boolean' as const },
+    { field: 'autoCheckUpdates', kind: 'boolean' as const },
+    { field: 'followRepositoryUpdates', kind: 'boolean' as const },
     { field: 'allowPrivateAccess', kind: 'boolean' as const },
     { field: 'defaultHome', kind: 'text' as const },
     { field: 'maxTabs', kind: 'number' as const },

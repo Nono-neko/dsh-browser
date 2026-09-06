@@ -16,6 +16,8 @@ import { extname } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
+import type { UpdateService } from './update-service.ts'
+import { handleUpdateRoute } from './update-routes.ts'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BrowserEnvelope, BrowserEvent, BrowserError, WorkspaceListing } from '../core/types.ts'
 import { captureUrl, closeBrowser, renderUrl, type BrowserOptions } from './browser-pool.ts'
@@ -338,6 +340,7 @@ export function registerBrowserRoutes(
   broadcaster: OpenBroadcaster,
   browserOptions: BrowserOptions = {},
   reviewStore?: ReviewStore,
+  updates?: UpdateService,
 ): () => void {
   const previewTokens = new Map<string, { root: string; expiresAt: number }>()
 
@@ -585,6 +588,10 @@ export function registerBrowserRoutes(
     disposers.push(ctx.webServer.register({ kind: 'exact', path: '/api/dsh-browser/events', handler: (req, res) => safely(handleEvents, req, res) }))
     disposers.push(ctx.webServer.register({ kind: 'prefix', path: '/api/dsh-browser', handler: (req, res) => safely(async () => {
       const url = new URL(req.url ?? '/', 'http://x')
+      if (updates !== undefined && (url.pathname === '/api/dsh-browser/updates' || url.pathname === '/api/dsh-browser/updates/check')) {
+        await handleUpdateRoute(req, res, updates)
+        return
+      }
       if (url.pathname === '/api/dsh-browser/list') {
         await handleList(req, res)
         return

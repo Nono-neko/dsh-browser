@@ -46,6 +46,10 @@ export interface BrowserConfig {
   enabled?: boolean
   /** When true, a system-prompt section announces the plugin to every agent. */
   announceToAgent?: boolean
+  /** Check public plugin releases at startup and every six hours. */
+  autoCheckUpdates?: boolean
+  /** Source installs may opt into tracking the repository default branch. */
+  followRepositoryUpdates?: boolean
   /** Home button target; defaults to https://www.bing.com. */
   defaultHome?: string
   /** Maximum number of tabs kept per workspace (oldest trimmed). */

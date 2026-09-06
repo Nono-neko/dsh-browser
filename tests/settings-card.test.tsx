@@ -21,6 +21,8 @@ describe('BrowserSettingsCard', () => {
       fields: {
         enabled: { text: 'true', overridden: false, invalid: false },
         announceToAgent: { text: 'true', overridden: false, invalid: false },
+        autoCheckUpdates: { text: 'true', overridden: false, invalid: false },
+        followRepositoryUpdates: { text: 'false', overridden: false, invalid: false },
         allowPrivateAccess: { text: 'false', overridden: false, invalid: false },
         defaultHome: { text: 'https://www.bing.com', overridden: false, invalid: false },
         maxTabs: { text: '10', overridden: false, invalid: false },

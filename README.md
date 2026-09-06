@@ -33,6 +33,12 @@ Chromium.
 ## What it does
 
 - **Entry**: a "Browser" row in the sidebar, below the New Session button.
+- **Update notifications**: a separate button next to Browser shows "Update
+  available" when a newer version is available for that installation source.
+  It opens version details,
+  release notes, manual checking, update guidance, and ignore/restore controls
+  without navigating or reloading the preview. This feature only notifies; it
+  never installs packages, modifies files, or restarts the Host.
 - **Panel**: takes over the center column with a tab strip, a toolbar
   (back / forward / reload / home / open-in-system-browser), an address bar
   (URL or search, Enter opens), and an iframe content area. Each page is
@@ -87,7 +93,8 @@ Chromium.
   **Settings → Plugins**; on Desktop, a standalone "Embedded browser" page
   appears in the left navigation. Both support staged edits, save/discard,
   and inherit/reset semantics. Fields: enable, agent announcement, home page,
-  tab cap, private-address override, browser executable path, proxy server.
+  tab cap, private-address override, browser executable path, proxy server,
+  automatic update checking, and optional repository tracking.
 - **Agent announcement**: a system-prompt section tells every agent the plugin
   exists, what its tools do, and its limits (same mechanism dsh-ssh uses).
 
@@ -127,6 +134,8 @@ document. All fields are optional.
 |---|---|---|---|
 | `enabled` | boolean | `true` | Mount the sidebar entry, tools, and proxy routes. |
 | `announceToAgent` | boolean | `true` | Inject a system-prompt section telling agents about the browser and review tools. |
+| `autoCheckUpdates` | boolean | `true` | Check public plugin releases at startup and every six hours. |
+| `followRepositoryUpdates` | boolean | `false` | Source installs only: compare the built commit with the repository default branch instead of stable Releases. |
 | `defaultHome` | string | `https://www.bing.com` | URL loaded by the new-tab / home button. |
 | `maxTabs` | number | `10` | Per-workspace tab cap; oldest inactive tab is trimmed. |
 | `allowPrivateAccess` | boolean | `false` | Let `browser_read` fetch private / loopback addresses. |
@@ -168,6 +177,36 @@ dsh-browser:
   allowPrivateAccess: true
 ```
 
+### Update notification behavior
+
+- The Host checks `@nono-neko/dsh-browser` on npm and stable Releases in
+  `Nono-neko/dsh-browser` on GitHub. npm installations follow the stable version
+  at the `latest` tag; source checkouts follow GitHub Releases. A GitHub-only
+  release is not advertised as installable from npm. Prereleases, equal versions,
+  and downgrades do not trigger a badge. Unknown installations are labeled and
+  may display either source; confirm your installation method before updating.
+- The running version is stamped from this plugin's package at build time, not
+  from the active workspace. A package-root `.git` identifies source installs;
+  a `node_modules` package identifies npm installs. Other layouts are unknown.
+  Optional default-branch tracking compares a clean build's commit with the
+  remote tip and only prompts when that tip is ahead. Dirty/watch builds,
+  missing revisions, unpublished local commits, and diverged histories cannot
+  be reliably compared; consult the repository instead. Rebuild and restart the
+  Host after updating source, then refresh the GUI.
+- Results and ETags are cached in Host memory. Concurrent requests are coalesced;
+  manual checks are limited to once per minute. Automatic checks run six hours
+  after the last completed check. Turning them off still permits manual checks;
+  disabling the plugin or disposing it stops background checks. The GUI polls
+  only the local cache, not GitHub/npm. Network and rate-limit failures are
+  displayed as unavailable, never as "no newer version".
+- Ignoring a version suppresses only that version's sidebar badge, not its
+  details. The choice is stored per GUI origin in localStorage (memory-only if
+  storage is unavailable). A subsequent version can notify again. These settings
+  and results are plugin-wide, not per workspace.
+- Checks use the Host's network connection, not Puppeteer's `proxyServer` option.
+  Save editor contents and local changes before manually updating. No automatic
+  upgrade, Git operation, or restart is exposed by the update button.
+
 ## FAQ
 
 **Q: Install fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`?**
@@ -190,6 +229,12 @@ allowBuilds:
 
 ## Development
 
+For an isolated update-UI smoke check, run `pnpm exec vite --host 127.0.0.1`
+and open `/tests/fixtures/update-notifier.html` on the printed local URL. The
+fixture uses synthetic update responses and a live animated iframe; it does not
+contact registries or modify DSH. Verify badges, ignore/restore, failure states,
+dark/light themes, modal keyboard behavior, and unchanged preview scroll.
+
 ```sh
 pnpm install    # @deepseek-ai/* SDK packages are public on npm (or a mirror)
 pnpm build      # tsc types + tsdown dual-half bundle (lib/index.js + lib/client.js)
@@ -208,7 +253,7 @@ services.
 ## Security model
 
 - **Loopback fence**: every `/api/dsh-browser` route (proxy, SSE, files,
-  review screenshots, source editing, and reviews)
+  review screenshots, source editing, reviews, and update metadata)
   refuses non-loopback clients (socket address + Host header + same-origin
   markers). A LAN-exposed dsh web cannot serve workspace files or the proxy
   to unpaired devices.
@@ -216,6 +261,16 @@ services.
   (realpath) and require it to be a registered workspace or inside one;
   every requested path is re-checked after resolution, so symlinks cannot
   escape the root.
+- **Update metadata boundary**: `GET /api/dsh-browser/updates` reads a cached
+  snapshot; `POST /api/dsh-browser/updates/check` requests a rate-limited refresh.
+  Both enforce the same loopback fence, but need no workspace because they never
+  read project files. Outbound requests use only fixed HTTPS endpoints at
+  `registry.npmjs.org` and `api.github.com`, refuse redirects, and are capped at
+  10 seconds and 512 KiB per response. No workspace paths, source contents,
+  credentials, or comments are sent. The package version is sent as User-Agent;
+  optional repository tracking also sends the plugin's built commit for comparison.
+  Release notes are untrusted plain text, not HTML or Agent instructions. Links
+  are constructed from fixed repository/package URLs, never remote-provided URLs.
 - **Served HTML sandbox**: workspace-previewed HTML is served with
   `Content-Security-Policy: sandbox` and an opaque iframe origin. The host adds
   one response nonce to the page's existing scripts, so local styling and

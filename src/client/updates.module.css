@@ -1,0 +1,49 @@
+.dialog {
+  box-sizing: border-box;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - 40px));
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-primary, #dce0e5);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-base, #fff);
+  color: var(--dsw-alias-label-primary, #1f2329);
+  box-shadow: 0 20px 80px #0004;
+  font: 13px/1.6 system-ui, sans-serif;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.dialog::backdrop { background: #0006; }
+.dialog h2, .dialog h3, .dialog p { margin: 0; }
+.dialog h2 { font-size: 18px; }
+.dialog h3 { font-size: 13px; }
+.dialog a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.dialog button {
+  font: inherit;
+  border: 1px solid var(--dsw-alias-border-primary, #dce0e5);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.dialog button:hover:not(:disabled) { background: var(--dsw-specific-sidebar-nav-item-hover, #0001); }
+.dialog button:disabled { opacity: 0.55; cursor: default; }
+.dialog :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.header { padding: 20px 22px 16px; display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.header p, .hint { color: var(--dsw-alias-label-secondary, #5f6672); font-size: 12px; }
+.header .close { padding: 0 7px; border: 0; font-size: 24px; line-height: 1.2; }
+.body { padding: 0 22px 20px; display: grid; gap: 16px; overflow-wrap: anywhere; }
+.summary { padding: 14px 16px; border-radius: 9px; background: var(--dsw-specific-sidebar-nav-item-hover, #0001); }
+.summary[data-available='true'] { border-left: 3px solid currentColor; }
+.summary strong { display: block; margin-bottom: 6px; font-size: 15px; }
+.summary code { font-size: 12px; }
+.metadata { display: grid; grid-template-columns: auto 1fr; gap: 7px 24px; margin: 0; }
+.metadata dt { color: var(--dsw-alias-label-secondary, #5f6672); }
+.metadata dd { margin: 0; text-align: right; }
+.notice { padding-left: 12px; border-left: 2px solid currentColor; }
+.notes summary { cursor: pointer; }
+.notes pre { margin: 10px 0 0; max-height: 190px; overflow: auto; white-space: pre-wrap; font: inherit; }
+.guidance { display: grid; gap: 6px; }
+.footer { padding: 14px 22px; border-top: 1px solid var(--dsw-alias-border-primary, #dce0e5); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }

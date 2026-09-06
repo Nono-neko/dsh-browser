@@ -8,6 +8,16 @@
 import type { BrowserEnvelope, WorkspaceListing } from '../core/types.ts'
 import type { ReviewBatchView, ReviewComment, ReviewCommentCreate, ReviewScreenshot } from '../core/review.ts'
 import type { SourceDocument, SourceWrite } from '../core/editor.ts'
+import type { UpdateSnapshot } from '../core/updates.ts'
+
+/** Read host-cached metadata, or explicitly request a rate-limited refresh. */
+export function fetchUpdates(manual: boolean, signal: AbortSignal, fetchImpl: typeof fetch = fetch): Promise<UpdateSnapshot> {
+  return requestEnvelope<UpdateSnapshot>(
+    manual ? '/api/dsh-browser/updates/check' : '/api/dsh-browser/updates',
+    { method: manual ? 'POST' : 'GET', cache: 'no-store', signal },
+    fetchImpl,
+  )
+}
 
 /** Subscribe to host open events (agent browser_open pushes). */
 export function subscribeOpenEvents(onOpen: (url: string) => void): () => void {

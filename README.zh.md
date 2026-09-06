@@ -27,6 +27,9 @@ Windows、macOS、Linux 上自动检测可执行文件路径，也可在设置�
 ## 功能
 
 - **入口**：侧边栏「浏览器」一行，位于新建会话按钮下方。
+- **更新提示**：「浏览器」旁的独立按钮在发现安装来源可用的新版本后显示「可更新」。
+  点击可查看当前版本、更新说明、手动检查、更新指引及忽略/恢复提醒，不会导航
+  或重载预览页面。这里只提示，不会自动安装包、修改文件或重启 Host。
 - **面板**：接管中心列，包含标签栏、工具栏（后退 / 前进 / 刷新 / 主页 /
   在系统浏览器中打开）、地址栏（网址或搜索词，回车打开）与 iframe 内容区。
   每个页面由宿主端共享的无头 Chromium 渲染——代理路由等待 `networkidle`，
@@ -66,7 +69,7 @@ Windows、macOS、Linux 上自动检测可执行文件路径，也可在设置�
 - **设置卡**：Web 版在「设置 → 插件」区新增「内置浏览器」卡片；Desktop 版
   在左侧导航栏新增「内置浏览器」独立设置页。两者均支持暂存编辑、保存/放弃、
   继承/恢复默认语义。字段：启用开关、agent 播报、主页地址、标签上限、内网访问
-  开关、浏览器可执行文件路径、代理服务器。
+  开关、浏览器可执行文件路径、代理服务器、自动检查更新及可选的仓库跟踪。
 - **agent 公告**：系统提示词段落向每个 agent 说明本插件、工具与限制（与
   dsh-ssh 同一机制）。
 
@@ -105,6 +108,8 @@ dsh plugin --profile <name> remove link:<repo>
 |---|---|---|---|
 | `enabled` | boolean | `true` | 挂载侧边栏入口、工具与代理路由。 |
 | `announceToAgent` | boolean | `true` | 注入 system-prompt 段落，告知 agent 浏览器与批注工具的存在。 |
+| `autoCheckUpdates` | boolean | `true` | 启动时及每六小时检查插件的公开版本。 |
+| `followRepositoryUpdates` | boolean | `false` | 仅源码安装生效：按构建时提交与仓库默认分支比较，而非只检查正式 Release。 |
 | `defaultHome` | string | `https://www.bing.com` | 新标签页 / 主页按钮加载的 URL。 |
 | `maxTabs` | number | `10` | 每个工作区的标签上限，超出后裁剪最久未激活的标签。 |
 | `allowPrivateAccess` | boolean | `false` | 允许 `browser_read` 访问内网 / loopback 地址。 |
@@ -146,6 +151,30 @@ dsh-browser:
   allowPrivateAccess: true
 ```
 
+### 更新提示行为
+
+- Host 检查 npm 上的 `@nono-neko/dsh-browser` 和 GitHub 上
+  `Nono-neko/dsh-browser` 的正式 Release。npm 安装跟随 `latest` 标签中的
+  正式版本；源码安装跟随 GitHub Release。只在 GitHub 发布的版本不会被当作
+  npm 可安装更新。预发布、同版本和降级不触发提醒。无法识别安装方式时会明确
+  标注，并可展示任一来源的新版本；请先核对原有安装方式再更新。
+- 当前运行版本在构建时由本插件包信息写入，不读取当前工作区的版本。插件包根
+  目录带 `.git` 时识别为源码安装；位于 `node_modules` 时识别为 npm 安装，
+  其他布局标记为未知。可选的默认分支跟踪把干净构建时的提交与远端顶端比较，
+  只在远端领先时提示。未提交/监听模式构建、缺少提交信息、尚未公开的本地提交
+  或分叉历史无法可靠比较，请到仓库核对。源码更新后需重新构建、重启 Host，
+  再刷新 GUI。
+- 结果与 ETag 缓存在 Host 内存，并发请求会合并；手动检查最多每分钟一次，
+  自动检查在上次检查完成六小时后运行。关闭自动检查后仍可手动检查；禁用插件
+  或卸载其运行实例会停止后台检查。GUI 只轮询本地缓存，不直接请求 GitHub/npm。
+  断网、限流等错误显示为不可用，不会显示为「未发现新版本」。
+- 忽略版本只隐藏该版本的侧边栏提醒，详情仍可查看并恢复提醒。选择按 GUI
+  来源保存在 localStorage 中；存储不可用时退化为内存。后续新版本仍会提示。
+  检测设置与结果属于整个插件，不按工作区区分。
+- 检测使用 Host 的网络连接，不使用 Puppeteer 的 `proxyServer` 配置。
+  手动更新前请保存编辑器内容与本地修改。更新按钮不提供自动升级、Git 操作
+  或重启能力。
+
 ## 常见问题
 
 **Q：安装时报 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 怎么办？**
@@ -167,6 +196,11 @@ allowBuilds:
 
 ## 开发
 
+独立验证更新界面可运行 `pnpm exec vite --host 127.0.0.1`，再打开终端所示
+本地地址下的 `/tests/fixtures/update-notifier.html`。测试页使用模拟更新响应
+及实时动画 iframe，不访问注册表或修改 DSH。可验证提醒、忽略/恢复、失败状态、
+深浅主题、弹窗键盘交互，以及预览滚动位置不变。
+
 ```sh
 pnpm install    # @deepseek-ai/* SDK 包已在 npm 公开（或走镜像）
 pnpm build      # tsc 出类型 + tsdown 产出双半区（lib/index.js + lib/client.js）
@@ -183,11 +217,19 @@ pnpm test       # vitest
 ## 安全模型
 
 - **Loopback 围栏**：所有 `/api/dsh-browser` 路由（代理、SSE、文件、批注截图、
-  源码编辑与批注）拒绝非
+  源码编辑、批注与更新元数据）拒绝非
   loopback 客户端（套接字地址 + Host 头 + 同源标记）。LAN 暴露的 dsh web
   无法向未配对设备提供工作区文件或代理服务。
 - **工作区门禁**：文件列表、读取、批注截图、批注存储与源码编辑先对请求根做 realpath 规范化并要求其为已
   注册工作区（或位于其内）；每个请求路径解析后再次校验，符号链接无法逃逸。
+- **更新元数据边界**：`GET /api/dsh-browser/updates` 读取缓存状态；
+  `POST /api/dsh-browser/updates/check` 发起受频率限制的检查。两者均遵守
+  loopback 围栏，但不需要工作区，因为不会读取项目文件。出站请求只访问
+  `registry.npmjs.org` 与 `api.github.com` 上的固定 HTTPS 接口，拒绝重定向，
+  每次响应限时 10 秒、限大小 512 KiB。不发送工作区路径、源码内容、凭据或
+  评论。User-Agent 携带插件版本；可选仓库跟踪还会发送本插件构建时的提交以供
+  比较。更新说明只作为不可信纯文本展示，不执行 HTML，也不作为 Agent 指令；
+  链接由固定仓库/包地址构造，不采信远端返回的链接。
 - **预览 HTML 沙箱**：工作区预览 HTML 以 `Content-Security-Policy: sandbox`
   和不透明 iframe 来源运行。host 为页面已有脚本统一添加本次响应的随机 nonce，
   使本地样式与交互可用，但不给页面访问 GUI API 的权限。不透明

@@ -148,7 +148,13 @@ describe('BrowserPanel smoke mount', () => {
         })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const requestAgentReview = vi.fn(async () => 'batch-test')
+    const requestAgentReview = vi.fn(async () => {
+      for (const comment of comments) {
+        comment.status = 'submitted'
+        comment.batchId = 'batch-test'
+      }
+      return 'batch-test'
+    })
     const store = new TabsStore(() => 10)
     store.set(initialState('C:/work/proj'))
     store.navigate(store.getSnapshot().activeId as string, fileUrl('C:/work/proj', 'preview.html'))
@@ -245,6 +251,8 @@ describe('BrowserPanel smoke mount', () => {
       target: { kind: 'element', selector: '#hero-title' },
       context: { scrollY: 900 },
     })
+    expect(host.textContent).toContain('Reduce this region.')
+    expect(host.querySelector('[data-review-region="1"]')).not.toBeNull()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const sendButton = [...host.querySelectorAll('button')]
       .find(button => button.textContent === 'review.send') as HTMLButtonElement
@@ -254,6 +262,9 @@ describe('BrowserPanel smoke mount', () => {
       ['comment-1'],
       [expect.objectContaining({ mediaType: 'image/png', data: 'AQID' })],
     )
+    expect(host.textContent).not.toContain('Reduce this region.')
+    expect(host.querySelector('[data-review-region="1"]')).toBeNull()
+    expect(host.textContent).toContain('review.empty')
     confirm.mockRestore()
     act(() => { root.unmount() })
     host.remove()

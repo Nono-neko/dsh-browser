@@ -171,6 +171,10 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
   const [editorDirty, setEditorDirty] = useState(false)
 
   const active = state.tabs.find(tab => tab.id === state.activeId)
+  const draftReviewComments = useMemo(
+    () => reviewComments.filter(comment => comment.status === 'draft'),
+    [reviewComments],
+  )
 
   const tokenFor = (tabId: string): string => {
     let token = previewTokens.current.get(tabId)
@@ -611,12 +615,12 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
                 <ReviewOverlay
                   picking={reviewMode && !isWorkspaceHtmlUrl(tab.url)}
                   picked={picked}
-                  markers={reviewComments
+                  markers={draftReviewComments
                     .map((comment, index) => ({ comment, number: index + 1 }))
-                    .filter(marker => marker.comment.url === tab.url && marker.comment.status !== 'resolved')}
-                  nextNumber={reviewComments.length + 1}
+                    .filter(marker => marker.comment.url === tab.url)}
+                  nextNumber={draftReviewComments.length + 1}
                   label={t('review.canvas')}
-                  commentTitle={t('review.commentTitle').replace('{number}', String(reviewComments.length + 1))}
+                  commentTitle={t('review.commentTitle').replace('{number}', String(draftReviewComments.length + 1))}
                   placeholder={t('review.placeholder')}
                   saveLabel={t('review.add')}
                   cancelLabel={t('review.cancelComment')}
@@ -636,7 +640,7 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
         </div>
         {reviewOpen ? (
           <ReviewPanel
-            comments={reviewComments}
+            comments={draftReviewComments}
             picking={reviewMode}
             capturing={reviewCapturing}
             busy={reviewBusy || reviewCapturing}

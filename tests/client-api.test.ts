@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { captureReviewScreenshot, deleteReviewComment } from '../src/client/api.ts'
+import { captureReviewScreenshot, deleteReviewComment, fetchPreviewSession } from '../src/client/api.ts'
 
 describe('captureReviewScreenshot', () => {
   it('requests a bounded viewport and returns prompt-ready PNG base64', async () => {
@@ -57,5 +57,37 @@ describe('deleteReviewComment', () => {
     expect(requestUrl.searchParams.get('root')).toBe('C:/work/project')
     expect(requestUrl.searchParams.get('id')).toBe('comment-1')
     expect(init?.method).toBe('DELETE')
+  })
+})
+
+describe('fetchPreviewSession', () => {
+  it('accepts a capability-scoped loopback preview carrier', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      value: { baseUrl: 'http://127.0.0.1:49231/_dsh-browser-preview/abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG' },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+
+    await expect(fetchPreviewSession(fetchImpl)).resolves.toEqual({
+      baseUrl: 'http://127.0.0.1:49231/_dsh-browser-preview/abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
+    })
+    expect(fetchImpl).toHaveBeenCalledWith('/api/dsh-browser/preview-session', {
+      cache: 'no-store',
+      headers: { accept: 'application/json' },
+    })
+  })
+
+  it('rejects a non-loopback carrier returned by the host', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      value: { baseUrl: 'https://example.com/preview' },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+
+    await expect(fetchPreviewSession(fetchImpl)).rejects.toThrow('invalid preview carrier')
   })
 })

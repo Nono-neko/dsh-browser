@@ -56,6 +56,26 @@ export function isHttpUrl(input: string): boolean {
 }
 
 /**
+ * Whether this client URL carries the complete marker set minted by DSH
+ * Desktop. The Desktop server rejects marker-bearing ordinary-browser URLs,
+ * so these values are a presentation hint rather than an authentication
+ * boundary.
+ */
+export function isDesktopRendererUrl(input: string): boolean {
+  try {
+    const url = new URL(input)
+    const mode = url.searchParams.get('dsh-desktop-mode')
+    const platform = url.searchParams.get('dsh-desktop-platform')
+    const version = url.searchParams.get('dsh-desktop-version')
+    return (mode === 'compatibility' || mode === 'extended' || mode === 'advanced')
+      && platform !== null && /^[a-z0-9_-]{2,32}$/i.test(platform)
+      && version !== null && version.length > 0 && version.length <= 64
+  } catch {
+    return false
+  }
+}
+
+/**
  * A short display label for a tab: the hostname for http(s) URLs, the
  * relative path for workspace-file URLs, or the URL itself when neither fits.
  */
@@ -94,19 +114,31 @@ export function tabSortKey(url: string): string {
  * and non-http URLs pass through unchanged — they are same-origin or never
  * need proxying.
  */
-export function toProxyUrl(url: string, reviewToken?: string): string {
-  if (url.startsWith('/api/dsh-browser/')) return appendReviewToken(url, reviewToken)
+export function toProxyUrl(url: string, reviewToken?: string, previewBaseUrl?: string): string {
+  if (url.startsWith('/api/dsh-browser/')) {
+    return onPreviewCarrier(appendReviewToken(url, reviewToken), previewBaseUrl)
+  }
   const parsed = tryParseHttp(url)
   if (parsed === null) return url
   try {
     const u = new URL(parsed)
-    if (u.pathname.startsWith('/api/dsh-browser/')) return appendReviewToken(url, reviewToken)
+    if (u.pathname.startsWith('/api/dsh-browser/')) {
+      const target = appendReviewToken(url, reviewToken)
+      if (previewBaseUrl === undefined || previewBaseUrl === '') return target
+      const routed = new URL(target)
+      return onPreviewCarrier(`${routed.pathname}${routed.search}${routed.hash}`, previewBaseUrl)
+    }
   } catch {
     // fall through to proxy
   }
   const query = new URLSearchParams({ url })
   if (reviewToken !== undefined) query.set('reviewToken', reviewToken)
-  return `/api/dsh-browser/proxy?${query.toString()}`
+  return onPreviewCarrier(`/api/dsh-browser/proxy?${query.toString()}`, previewBaseUrl)
+}
+
+function onPreviewCarrier(route: string, previewBaseUrl: string | undefined): string {
+  if (previewBaseUrl === undefined || previewBaseUrl === '') return route
+  return `${previewBaseUrl.replace(/\/+$/, '')}${route.startsWith('/') ? route : `/${route}`}`
 }
 
 function appendReviewToken(url: string, reviewToken: string | undefined): string {

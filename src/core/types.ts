@@ -40,6 +40,12 @@ export interface WorkspaceListing {
   entries: WorkspaceEntry[]
 }
 
+/** Capability-scoped loopback carrier used by sandboxed Desktop previews. */
+export interface BrowserPreviewSession {
+  /** Origin plus unguessable path prefix; never persist or expose as a referrer. */
+  baseUrl: string
+}
+
 /** Plugin config, validated by the same-named schemastery schema in the host half. */
 export interface BrowserConfig {
   /** Master switch (tools, routes, prompt section, browser half surfaces). */

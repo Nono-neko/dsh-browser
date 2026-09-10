@@ -64,6 +64,52 @@ describe('BrowserPanel smoke mount', () => {
     host.remove()
   })
 
+  it('uses the isolated preview carrier for Desktop iframe navigation', async () => {
+    const originalUrl = window.location.href
+    window.history.pushState({}, '', '/?dsh-desktop-mode=compatibility&dsh-desktop-platform=win32&dsh-desktop-version=2.0.6')
+    const baseUrl = 'http://127.0.0.1:49231/_dsh-browser-preview/abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      value: { baseUrl },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const store = new TabsStore(() => 10)
+    store.set(initialState('C:/work/proj'))
+    store.navigate(store.getSnapshot().activeId as string, fileUrl('C:/work/proj', 'preview.html'))
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+
+    await act(async () => {
+      root.render(createElement(BrowserPanel, {
+        store,
+        deps: {
+          defaultHome: () => 'https://www.bing.com',
+          maxTabs: () => 10,
+          t: (key: string) => key,
+          requestAgentReview: async () => 'batch-test',
+        },
+      }))
+    })
+
+    const frame = host.querySelector('iframe') as HTMLIFrameElement | null
+    expect(fetchMock).toHaveBeenCalledWith('/api/dsh-browser/preview-session', {
+      cache: 'no-store',
+      headers: { accept: 'application/json' },
+    })
+    expect(frame?.src.startsWith(`${baseUrl}/api/dsh-browser/file?`)).toBe(true)
+    expect(frame?.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(frame?.getAttribute('referrerpolicy')).toBe('no-referrer')
+
+    act(() => { root.unmount() })
+    host.remove()
+    vi.unstubAllGlobals()
+    window.history.replaceState({}, '', originalUrl)
+  })
+
   it('strictly sandboxes a workspace file iframe', () => {
     const store = new TabsStore(() => 10)
     store.set(initialState('C:/work/proj'))

@@ -28,11 +28,13 @@ import { reviewBridgeScript } from './review-bridge.ts'
 import type { ReviewStore } from './review-store.ts'
 import { handleSourceRoute } from './source-routes.ts'
 import { resolveInside } from './workspace-path.ts'
+import { createLoopbackPreviewServer } from './preview-server.ts'
 
 const OK = <T>(value: T): BrowserEnvelope<T> => ({ ok: true, value })
 const FAIL = (error: BrowserError): BrowserEnvelope<never> => ({ ok: false, error })
 const BAD_REQUEST: BrowserError = { code: 'bad-request', message: 'malformed request' }
 const SCREENSHOT_ROUTE = '/api/dsh-browser/screenshot'
+const PREVIEW_SESSION_ROUTE = '/api/dsh-browser/preview-session'
 
 /** SSE keep-alive interval (proxies drop idle connections). */
 const HEARTBEAT_MS = 15_000
@@ -87,11 +89,12 @@ function pathSegments(path: string): string {
 }
 
 /** A directory URL whose ordinary relative references stay on the file route. */
-function fileBaseUrl(root: string, directory: string, previewToken?: string): string {
+function fileBaseUrl(root: string, directory: string, previewToken?: string, publicPathPrefix = ''): string {
   const encodedDirectory = pathSegments(directory)
+  const fileRoute = `${publicPathPrefix}${FILE_ROUTE}`
   const prefix = previewToken === undefined
-    ? `${FILE_ROUTE}/${rootToken(root)}`
-    : `${FILE_ROUTE}/preview/${previewToken}/${rootToken(root)}`
+    ? `${fileRoute}/${rootToken(root)}`
+    : `${fileRoute}/preview/${previewToken}/${rootToken(root)}`
   return `${prefix}/${encodedDirectory === '' ? '' : `${encodedDirectory}/`}`
 }
 
@@ -415,7 +418,7 @@ export function registerBrowserRoutes(
     json(res, OK(value))
   }
 
-  const handleFile = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  const handleFile = async (req: IncomingMessage, res: ServerResponse, publicPathPrefix = ''): Promise<void> => {
     const trustedRequest = isLoopbackRequest(req)
     const opaqueResourceRequest = !trustedRequest && isLoopbackPreviewResourceRequest(req)
     if (!trustedRequest && !opaqueResourceRequest) {
@@ -481,7 +484,7 @@ export function registerBrowserRoutes(
         // load from an opaque iframe without opening general cross-site fetch.
         let html = await file.readFile('utf8')
         const dirRel = path.replaceAll('\\', '/').split('/').slice(0, -1).join('/')
-        const baseUrl = fileBaseUrl(gated.canonical, dirRel, reviewToken)
+        const baseUrl = fileBaseUrl(gated.canonical, dirRel, reviewToken, publicPathPrefix)
         const nonce = randomUUID().replaceAll('-', '')
         const inject = `<base href="${baseUrl}">${reviewBridgeScript(reviewToken, nonce)}`
         html = authorizePageScripts(html, nonce)
@@ -580,6 +583,46 @@ export function registerBrowserRoutes(
     broadcaster.subscribe(req, res)
   }
 
+  const previewServer = createLoopbackPreviewServer(async (req, res, publicPathPrefix) => {
+    const url = new URL(req.url ?? '/', 'http://x')
+    if (url.pathname === PROXY_ROUTE) {
+      await safely((request, response) => handleProxy(request, response, browserOptions), req, res)
+      return
+    }
+    if (url.pathname === FILE_ROUTE || url.pathname.startsWith(`${FILE_ROUTE}/`)) {
+      await safely((request, response) => handleFile(request, response, publicPathPrefix), req, res)
+      return
+    }
+    res.writeHead(404, {
+      'cache-control': 'no-store',
+      'content-type': 'text/plain; charset=utf-8',
+      'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
+    })
+    res.end('not found')
+  })
+
+  const handlePreviewSession = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    if (!isLoopbackRequest(req)) {
+      forbidden(res)
+      return
+    }
+    if (req.method !== 'GET') {
+      res.writeHead(405, { 'content-type': 'application/json; charset=utf-8', allow: 'GET' })
+      res.end(JSON.stringify({ error: 'preview session only supports GET requests' }))
+      return
+    }
+    const value = await previewServer.session()
+    const body = Buffer.from(JSON.stringify(OK(value)), 'utf8')
+    res.writeHead(200, {
+      'cache-control': 'no-store',
+      'content-type': 'application/json; charset=utf-8',
+      'content-length': body.length,
+      'x-content-type-options': 'nosniff',
+    })
+    res.end(body)
+  }
+
   const disposers: Array<() => void> = []
   try {
     // Exact routes must register before the prefix route — otherwise the
@@ -594,6 +637,10 @@ export function registerBrowserRoutes(
       }
       if (url.pathname === '/api/dsh-browser/list') {
         await handleList(req, res)
+        return
+      }
+      if (url.pathname === PREVIEW_SESSION_ROUTE) {
+        await handlePreviewSession(req, res)
         return
       }
       if (url.pathname === FILE_ROUTE || url.pathname.startsWith(`${FILE_ROUTE}/`)) {
@@ -621,6 +668,7 @@ export function registerBrowserRoutes(
       res.end()
     }, req, res) }))
   } catch (error) {
+    previewServer.close()
     for (const dispose of disposers.reverse()) {
       try { dispose() } catch {}
     }
@@ -633,6 +681,7 @@ export function registerBrowserRoutes(
     disposed = true
     for (const dispose of disposers.reverse()) dispose()
     previewTokens.clear()
+    previewServer.close()
     broadcaster.dispose()
     void closeBrowser()
   }

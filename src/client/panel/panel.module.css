@@ -383,6 +383,17 @@ html[data-dsh-browser-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh
   background: #ffffff;
 }
 
+.frameStatus {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 24px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
 .reviewOverlay {
   position: absolute;
   z-index: 5;

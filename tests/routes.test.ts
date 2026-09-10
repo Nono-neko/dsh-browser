@@ -158,6 +158,49 @@ describe('registerBrowserRoutes', () => {
     expect(legacyResponse.body.toString('utf8')).toBe('asset body')
   })
 
+  it('serves Desktop iframe previews from a capability-scoped loopback carrier', async () => {
+    await mkdir(join(root, 'docs'))
+    await writeFile(join(root, 'docs', 'index.html'), '<html><head><link rel="stylesheet" href="style.css"></head><body>Desktop preview</body></html>')
+    await writeFile(join(root, 'docs', 'style.css'), 'body { color: teal; }')
+    const gate: WorkspaceGate = async () => ({ ok: true, canonical: root })
+    const routes = routeHarness(gate)
+
+    const sessionResponse = await routes.file('/api/dsh-browser/preview-session')
+    const session = JSON.parse(sessionResponse.body.toString('utf8')) as {
+      ok: boolean
+      value: { baseUrl: string }
+    }
+    expect(sessionResponse.status).toBe(200)
+    expect(session.value.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/_dsh-browser-preview\/[A-Za-z0-9_-]{43}$/)
+
+    const previewUrl = new URL(`${session.value.baseUrl}/api/dsh-browser/file`)
+    previewUrl.searchParams.set('root', root)
+    previewUrl.searchParams.set('path', 'docs/index.html')
+    previewUrl.searchParams.set('reviewToken', 'abcDEF0123456789')
+    const htmlResponse = await fetch(previewUrl)
+    const html = await htmlResponse.text()
+    const baseHref = /<base href="([^"]+)">/.exec(html)?.[1]
+    expect(htmlResponse.status).toBe(200)
+    expect(htmlResponse.headers.get('referrer-policy')).toBe('no-referrer')
+    expect(baseHref).toMatch(new RegExp(`^${new URL(session.value.baseUrl).pathname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/api/dsh-browser/file/preview/abcDEF0123456789/[A-Za-z0-9_-]+/docs/$`))
+
+    const styleResponse = await fetch(new URL('style.css', new URL(baseHref as string, previewUrl.origin)))
+    expect(styleResponse.status).toBe(200)
+    await expect(styleResponse.text()).resolves.toContain('color: teal')
+
+    const wrongCapability = new URL(previewUrl)
+    wrongCapability.pathname = wrongCapability.pathname.replace(/\/_dsh-browser-preview\/[^/]+/, '/_dsh-browser-preview/wrong-capability-token')
+    expect((await fetch(wrongCapability)).status).toBe(403)
+    expect((await fetch(previewUrl, {
+      headers: {
+        origin: 'https://example.com',
+        'sec-fetch-site': 'cross-site',
+        'sec-fetch-dest': 'iframe',
+      },
+    })).status).toBe(403)
+    routes.dispose()
+  })
+
   it('injects one response nonce and the live-review bridge into workspace HTML', async () => {
     await writeFile(join(root, 'preview.html'), '<html><head><script>window.pageScript = true</script></head><body><main>Preview</main></body></html>')
     const gate: WorkspaceGate = async () => ({ ok: true, canonical: root })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { displayLabel, isHttpUrl, normalizeAddress, tryParseHttp } from '../src/core/url.ts'
+import { displayLabel, isDesktopRendererUrl, isHttpUrl, normalizeAddress, toProxyUrl, tryParseHttp } from '../src/core/url.ts'
 
 describe('normalizeAddress', () => {
   it('keeps http(s) URLs as-is', () => {
@@ -59,5 +59,26 @@ describe('displayLabel', () => {
   it('labels workspace-file URLs by their relative path', () => {
     const url = `/api/dsh-browser/file?root=${encodeURIComponent('C:/work/proj')}&path=${encodeURIComponent('docs/readme.md')}`
     expect(displayLabel(url)).toBe('proj/readme.md')
+  })
+})
+
+describe('Desktop preview URLs', () => {
+  it('recognizes only complete Desktop renderer markers', () => {
+    expect(isDesktopRendererUrl('http://127.0.0.1:43120/?dsh-desktop-mode=compatibility&dsh-desktop-platform=win32&dsh-desktop-version=2.0.6')).toBe(true)
+    expect(isDesktopRendererUrl('http://127.0.0.1:43120/?dsh-desktop-mode=compatibility')).toBe(false)
+    expect(isDesktopRendererUrl('http://127.0.0.1:43120/?dsh-desktop-mode=unknown&dsh-desktop-platform=win32&dsh-desktop-version=2.0.6')).toBe(false)
+    expect(isDesktopRendererUrl('http://127.0.0.1:43120/')).toBe(false)
+  })
+
+  it('moves only the iframe carrier route onto the Desktop preview origin', () => {
+    const carrier = 'http://127.0.0.1:49231/_dsh-browser-preview/capability'
+    const file = '/api/dsh-browser/file?root=C%3A%2Fwork%2Fproject&path=index.html'
+
+    expect(toProxyUrl(file, 'review-token-1234', carrier)).toBe(
+      `${carrier}/api/dsh-browser/file?root=C%3A%2Fwork%2Fproject&path=index.html&reviewToken=review-token-1234`,
+    )
+    expect(toProxyUrl('https://example.com/page', 'review-token-1234', carrier)).toBe(
+      `${carrier}/api/dsh-browser/proxy?url=https%3A%2F%2Fexample.com%2Fpage&reviewToken=review-token-1234`,
+    )
   })
 })

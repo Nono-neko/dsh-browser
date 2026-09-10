@@ -45,7 +45,10 @@ Chromium.
   rendered by a shared headless Chromium on the host — the proxy route waits
   for `networkidle`, reads the fully-executed DOM, injects a `<base>` and a
   link-interception script, and returns it to the iframe. Inactive tabs stay
-  mounted and stateful; iframes lazy-load on first activation.
+  mounted and stateful; iframes lazy-load on first activation. In DSH Desktop,
+  iframe documents use an isolated loopback preview carrier so Desktop's native
+  renderer gate does not replace sandboxed subframe responses with `forbidden`;
+  Web clients continue using the shared `/api/dsh-browser` carrier.
 - **Link interception**: clicks on `http(s)` links inside a proxied page are
   caught and posted to the panel — `target="_blank"` / `window.open` opens a
   new tab, ordinary links navigate the current tab. Nothing ever pops the
@@ -253,10 +256,21 @@ services.
 ## Security model
 
 - **Loopback fence**: every `/api/dsh-browser` route (proxy, SSE, files,
-  review screenshots, source editing, reviews, and update metadata)
+  preview-session negotiation, review screenshots, source editing, reviews,
+  and update metadata)
   refuses non-loopback clients (socket address + Host header + same-origin
   markers). A LAN-exposed dsh web cannot serve workspace files or the proxy
   to unpaired devices.
+- **Desktop preview carrier**: Desktop's native capability header is deliberately
+  unavailable inside opaque sandbox frames. The authenticated parent therefore
+  negotiates an on-demand HTTP listener bound only to `127.0.0.1` and moves only
+  iframe `GET` requests for proxy/file content to a random 256-bit path on that
+  listener. The capability is process-memory-only, responses use
+  `Referrer-Policy: no-referrer`, unknown paths are denied, and the listener is
+  closed with the plugin routes. It does not expose mutation, SSE, settings, or
+  other DSH APIs and does not enable Desktop's ordinary-browser access. Workspace
+  paths still pass through the normal workspace gate and per-preview resource
+  capability checks.
 - **Workspace gate**: file listing, serving, review screenshots, review storage, and source editing canonicalize the requested root
   (realpath) and require it to be a registered workspace or inside one;
   every requested path is re-checked after resolution, so symlinks cannot

@@ -7,9 +7,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { normalizeAddress, displayLabel, toProxyUrl, tryParseHttp } from '../../core/url.ts'
+import { normalizeAddress, displayLabel, isDesktopRendererUrl, toProxyUrl, tryParseHttp } from '../../core/url.ts'
 import type { ReviewComment, ReviewScreenshot } from '../../core/review.ts'
-import { captureReviewScreenshot, createReviewComment, deleteReviewComment, listReviewComments } from '../api.ts'
+import { captureReviewScreenshot, createReviewComment, deleteReviewComment, fetchPreviewSession, listReviewComments } from '../api.ts'
 import { START_URL, type BrowserTab, type TabsStore } from '../store.ts'
 import type { BrowserPanelDeps } from '../mount.tsx'
 import { ReviewPanel, type PickedReviewTarget } from './ReviewPanel.tsx'
@@ -149,6 +149,7 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
   const subscribe = useMemo(() => store.subscribe.bind(store), [store])
   const state = useSyncExternalStore(subscribe, () => store.getSnapshot())
   const t = deps.t
+  const desktopRenderer = useMemo(() => isDesktopRendererUrl(window.location.href), [])
   const [draft, setDraft] = useState('')
   const seen = useRef(new Set<string>())
   const content = useRef<HTMLDivElement>(null)
@@ -169,6 +170,8 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editorTarget, setEditorTarget] = useState<EditorTarget>()
   const [editorDirty, setEditorDirty] = useState(false)
+  const [previewBaseUrl, setPreviewBaseUrl] = useState<string | undefined>(desktopRenderer ? undefined : '')
+  const [previewCarrierFailed, setPreviewCarrierFailed] = useState(false)
 
   const active = state.tabs.find(tab => tab.id === state.activeId)
   const draftReviewComments = useMemo(
@@ -212,6 +215,21 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
     if (active !== undefined) seen.current.add(active.id)
     setDraft(active !== undefined && active.url !== START_URL ? active.url : '')
   }, [active?.id, active?.url])
+
+  useEffect(() => {
+    if (!desktopRenderer) return
+    let current = true
+    setPreviewCarrierFailed(false)
+    void fetchPreviewSession().then(
+      (session) => {
+        if (current) setPreviewBaseUrl(session.baseUrl)
+      },
+      () => {
+        if (current) setPreviewCarrierFailed(true)
+      },
+    )
+    return () => { current = false }
+  }, [desktopRenderer])
 
   useEffect(() => {
     captureEpoch.current += 1
@@ -591,6 +609,10 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
               >
               {isStart ? (
                 <StartPage root={state.root} t={t} onNavigate={(url) => { store.navigate(tab.id, url) }} onOpenFile={(url) => { store.openTab(url) }} />
+              ) : mounted && previewBaseUrl === undefined ? (
+                <div className={css.frameStatus} role="status">
+                  {previewCarrierFailed ? t('preview.desktopFailed') : t('preview.desktopLoading')}
+                </div>
               ) : mounted ? (
                 <iframe
                   key={`${tab.id}:${tab.nonce}`}
@@ -599,13 +621,13 @@ export function BrowserPanel({ store, deps }: BrowserPanelProps): JSX.Element {
                     else frames.current.set(tab.id, node)
                   }}
                   className={css.frame}
-                  src={toProxyUrl(tab.url, previewToken)}
+                  src={toProxyUrl(tab.url, previewToken, previewBaseUrl)}
                   title={label(tab)}
                   sandbox={isWorkspaceFileUrl(tab.url)
                     ? (isWorkspaceHtmlUrl(tab.url) ? 'allow-scripts' : '')
                     : 'allow-scripts allow-forms'}
                   allow="clipboard-write; fullscreen"
-                  referrerPolicy="no-referrer-when-downgrade"
+                  referrerPolicy="no-referrer"
                   onLoad={() => {
                     if (isActive && isWorkspaceHtmlUrl(tab.url)) postReviewMode(tab.id, reviewOpen && reviewMode)
                   }}

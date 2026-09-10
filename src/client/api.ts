@@ -5,7 +5,7 @@
  * @module dsh-browser/client/api
  */
 
-import type { BrowserEnvelope, WorkspaceListing } from '../core/types.ts'
+import type { BrowserEnvelope, BrowserPreviewSession, WorkspaceListing } from '../core/types.ts'
 import type { ReviewBatchView, ReviewComment, ReviewCommentCreate, ReviewScreenshot } from '../core/review.ts'
 import type { SourceDocument, SourceWrite } from '../core/editor.ts'
 import type { UpdateSnapshot } from '../core/updates.ts'
@@ -34,6 +34,26 @@ export function subscribeOpenEvents(onOpen: (url: string) => void): () => void {
     }
   })
   return () => { source.close() }
+}
+
+/** Resolve the isolated loopback carrier used by sandboxed Desktop iframes. */
+export async function fetchPreviewSession(fetchImpl: typeof fetch = fetch): Promise<BrowserPreviewSession> {
+  const value = await requestEnvelope<BrowserPreviewSession>('/api/dsh-browser/preview-session', {
+    cache: 'no-store',
+    headers: { accept: 'application/json' },
+  }, fetchImpl)
+  let url: URL
+  try {
+    url = new URL(value.baseUrl)
+  } catch {
+    throw new Error('invalid preview carrier')
+  }
+  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.port === ''
+    || !/^\/_dsh-browser-preview\/[A-Za-z0-9_-]{43}$/.test(url.pathname)
+    || url.search !== '' || url.hash !== '') {
+    throw new Error('invalid preview carrier')
+  }
+  return { baseUrl: url.toString().replace(/\/$/, '') }
 }
 
 /** List one workspace directory through the host route. */

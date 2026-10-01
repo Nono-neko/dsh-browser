@@ -12,7 +12,7 @@
  */
 
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 export type CardFieldKind = 'boolean' | 'text' | 'number'
 
@@ -46,7 +46,7 @@ export interface CardState {
   fields: Record<string, CardFieldState>
 }
 
-type Staged = { kind: 'set'; value: unknown } | { kind: 'clear' } | { kind: 'invalid' }
+type Staged = { kind: 'set'; value: string | number | boolean } | { kind: 'clear' } | { kind: 'invalid' }
 
 /**
  * One staged form over one settings namespace.
@@ -62,7 +62,7 @@ export class BrowserSettingsForm<T extends object> {
   private cached: CardState
 
   constructor(
-    private readonly scope: SettingsScope<T>,
+    private readonly scope: ConfigForm<T>,
     private readonly defs: CardFieldDef[],
   ) {
     this.cached = this.build()
@@ -85,7 +85,7 @@ export class BrowserSettingsForm<T extends object> {
       resetField: (field: string) => { this.resetField(field) },
       save: () => { void this.save() },
       discard: () => { this.discard() },
-      refresh: () => { /* SettingsScope is auto-syncing via subscribe(); no manual load needed in the new API */ },
+      refresh: () => { /* ConfigForm is auto-syncing via subscribe(); no manual load needed */ },
     }
   }
 
@@ -131,14 +131,15 @@ export class BrowserSettingsForm<T extends object> {
     this.saving = true
     this.publish()
     const submitted = new Map(this.staged)
-    const writes: Array<Promise<void>> = []
-    for (const [field, staged] of submitted) {
-      if (staged.kind === 'set') writes.push(this.scope.set(field, staged.value))
-      else if (staged.kind === 'clear') writes.push(this.scope.unset(field))
-    }
     try {
-      await Promise.all(writes)
-      // SettingsScope settles after its authoritative read-back even when the
+      // One revision-fenced mutation keeps a multi-field save atomic.
+      const ops: Array<Parameters<ConfigForm<T>['mutate']>[0][number]> = []
+      for (const [field, staged] of submitted) {
+        if (staged.kind === 'set') ops.push({ op: 'set', path: [field], value: staged.value })
+        else if (staged.kind === 'clear') ops.push({ op: 'unset', path: [field] })
+      }
+      await this.scope.mutate(ops, this.scope.getSnapshot().revision)
+      // ConfigForm settles after its authoritative read-back even when the
       // Host rejects a mutation. Reconcile every submitted field against the
       // accepted user layer instead of treating Promise resolution as success.
       const snap = this.scope.getSnapshot()
@@ -178,15 +179,9 @@ export class BrowserSettingsForm<T extends object> {
     this.listeners.clear()
   }
 
-  /** Re-fetch the namespace from the Host (for settings pages that mount late). */
+  /** The shared ConfigForms mirror handles loading and reconnects. */
   refresh(): void {
-    const scope = this.scope as unknown as { load?: () => Promise<void> }
-    if (typeof scope.load !== 'function') return
-    try {
-      void scope.load()
-    } catch {
-      // ignore — data is already loaded via constructor subscription
-    }
+    // No per-form load API; accepted snapshots arrive through subscribe().
   }
 
   private snapshot(): { status: 'loading' | 'ready' | 'unavailable'; value: T | undefined; user: unknown; writable: boolean } {

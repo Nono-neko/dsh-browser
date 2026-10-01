@@ -8,7 +8,7 @@
  * @module @nono-neko/dsh-browser
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { fileURLToPath } from 'node:url'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
@@ -25,6 +25,14 @@ import type { BrowserConfig } from './core/types.ts'
 import { detectInstallation, UpdateService } from './host/update-service.ts'
 import { BUILD_REVISION, BUILD_VERSION } from './host/build-info.ts'
 
+// Loader emits this entry-scoped event after committing volatile Config values.
+// Keep the host-only contract local instead of depending on Loader's runtime.
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    'loader/volatile-update'(paths: readonly (readonly string[])[]): void
+  }
+}
+
 /** Stable cordis plugin name. */
 export const name = 'dsh-browser'
 
@@ -35,18 +43,20 @@ export const inject = ['webServer', 'tools', 'systemPrompt', 'workspaceRegistry'
 export const BROWSER_SETTINGS_NAMESPACE = 'dsh-browser' as SettingsNamespace
 
 /** Plugin config, validated by the same-named schemastery schema. */
-export interface Config extends BrowserConfig {}
+export type Config = {
+  [Field in keyof BrowserConfig]-?: Volatile<NonNullable<BrowserConfig[Field]>>
+}
 
-export const Config: z<Config> = z.object({
-  enabled: z.boolean().default(true),
-  announceToAgent: z.boolean().default(true),
-  autoCheckUpdates: z.boolean().default(true),
-  followRepositoryUpdates: z.boolean().default(false),
-  defaultHome: z.string().default('https://www.bing.com'),
-  maxTabs: z.number().step(1).min(2).max(30).default(10),
-  allowPrivateAccess: z.boolean().default(false),
-  browserExecutable: z.string().default(''),
-  proxyServer: z.string().default(''),
+export const Config = z.object({
+  enabled: z.boolean().default(true).volatile(),
+  announceToAgent: z.boolean().default(true).volatile(),
+  autoCheckUpdates: z.boolean().default(true).volatile(),
+  followRepositoryUpdates: z.boolean().default(false).volatile(),
+  defaultHome: z.string().default('https://www.bing.com').volatile(),
+  maxTabs: z.number().step(1).min(2).max(30).default(10).volatile(),
+  allowPrivateAccess: z.boolean().default(false).volatile(),
+  browserExecutable: z.string().default('').volatile(),
+  proxyServer: z.string().default('').volatile(),
 })
 
 /** Schema defaults, re-read for hand-built test contexts (the loader applies them normally). */
@@ -74,29 +84,17 @@ export const BROWSER_GUIDANCE = '本机已安装 dsh-browser 插件（DSH 内置
  * @param config - resolved plugin config (schema defaults applied by the loader).
  */
 export function apply(ctx: Context, config?: Config): void {
-  // The live source the surfaces read: the settings section once the web
-  // settings surface is served, the composition entry otherwise.
-  let current: () => Config = () => config ?? {}
-  const resolve = (): {
-    enabled: boolean
-    announceToAgent: boolean
-    autoCheckUpdates: boolean
-    followRepositoryUpdates: boolean
-    defaultHome: string
-    maxTabs: number
-    allowPrivateAccess: boolean
-    browserExecutable: string
-    proxyServer: string
-  } => ({
-    enabled: current().enabled ?? DEFAULTS.enabled,
-    announceToAgent: current().announceToAgent ?? DEFAULTS.announceToAgent,
-    autoCheckUpdates: current().autoCheckUpdates ?? DEFAULTS.autoCheckUpdates,
-    followRepositoryUpdates: current().followRepositoryUpdates ?? DEFAULTS.followRepositoryUpdates,
-    defaultHome: current().defaultHome ?? DEFAULTS.defaultHome,
-    maxTabs: current().maxTabs ?? DEFAULTS.maxTabs,
-    allowPrivateAccess: current().allowPrivateAccess ?? DEFAULTS.allowPrivateAccess,
-    browserExecutable: current().browserExecutable ?? DEFAULTS.browserExecutable,
-    proxyServer: current().proxyServer ?? DEFAULTS.proxyServer,
+  // Loader keeps these references stable and updates their snapshots in place.
+  const resolve = (): Required<BrowserConfig> => ({
+    enabled: config?.enabled.get() ?? DEFAULTS.enabled,
+    announceToAgent: config?.announceToAgent.get() ?? DEFAULTS.announceToAgent,
+    autoCheckUpdates: config?.autoCheckUpdates.get() ?? DEFAULTS.autoCheckUpdates,
+    followRepositoryUpdates: config?.followRepositoryUpdates.get() ?? DEFAULTS.followRepositoryUpdates,
+    defaultHome: config?.defaultHome.get() ?? DEFAULTS.defaultHome,
+    maxTabs: config?.maxTabs.get() ?? DEFAULTS.maxTabs,
+    allowPrivateAccess: config?.allowPrivateAccess.get() ?? DEFAULTS.allowPrivateAccess,
+    browserExecutable: config?.browserExecutable.get() ?? DEFAULTS.browserExecutable,
+    proxyServer: config?.proxyServer.get() ?? DEFAULTS.proxyServer,
   })
 
   const broadcaster = new OpenBroadcaster()
@@ -162,27 +160,13 @@ export function apply(ctx: Context, config?: Config): void {
     )
   }
 
-  // Register the settings namespace directly on the host settings service.
-  // We bypass installSettingsSection because its ctx.inject(["settings"], ...)
-  // creates a child context whose effect lifecycle disposes immediately after
-  // the callback runs, deleting the registration before describe() can see it.
-  const settings = ctx.get('settings') as
-    | {
-        register: (ns: string, schema: unknown, opts: { base?: unknown }) => { get: () => Config; watch: (cb: () => void) => () => void }
-      }
-    | undefined
-  if (settings !== undefined) {
-    const scope = settings.register(BROWSER_SETTINGS_NAMESPACE, Config, { base: config ?? {} })
-    current = () => scope.get()
-    const disposeWatch = scope.watch(() => { sync() })
-    ctx.effect(() => () => {
-      disposeWatch()
-      current = () => config ?? {}
-      sync()
-    }, 'dsh-browser: settings-watch')
-  }
-
-  // Initial registration from the composition entry (covers deployments with
-  // no settings service, where the register branch above is skipped).
+  // Only volatile Config fields are exposed by SettingsForms. Their writes
+  // update the running references without re-applying this plugin, so refresh
+  // the affected host surfaces on the owning Loader entry's notification.
+  ctx.on('loader/volatile-update', sync)
+  // The browser half supplies a custom page; suppress the generated duplicate.
+  ctx.inject(['settings'], (child) => {
+    child.effect(() => child.settings.configure({ auto: false }, ctx.fiber))
+  })
   sync()
 }

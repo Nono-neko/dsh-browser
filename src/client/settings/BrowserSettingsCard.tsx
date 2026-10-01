@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type {} from '../locales.ts'
 import type { BrowserSettingsActions, CardState, BrowserSettingsForm } from './card-form.ts'
 import css from './settings-card.module.css'
 
@@ -28,7 +29,7 @@ export interface BrowserSettingsCardFace {
 }
 
 export type BrowserSettingsCardProps =
-  PropsRuntime<'settings.plugin.item'>
+  PropsRuntime<'settings.plugins.tab'>
   & PropsLocale<'dsh-browser'>
   & InjectFace<BrowserSettingsCardFace & BrowserSettingsActions>
 

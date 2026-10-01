@@ -17,8 +17,8 @@ system-prompt announcement; the browser half renders the sidebar entry, the
 multi-tab panel, and the plugin settings card. Hot-pluggable — mounted via
 `dsh plugin --profile <name> add link:<repo>`.
 
-> **Platform support.** Works with both DSH Web and Desktop (requires DSH v0.1.1-rc.1
-> or later). The visual settings card works out of the box on both platforms —
+> **Platform support.** This version targets DSH's current
+> ConfigForms and volatile Config APIs on Web and Desktop. The visual settings form works on both platforms —
 > no DSH source changes needed. On Web it appears under Settings → Plugins; on
 > Desktop it appears as a standalone "Embedded browser" entry in the left nav.
 
@@ -129,9 +129,12 @@ Restart `dsh web` after removal.
 
 ## Configuration
 
-The plugin reads its settings from a layered source: schema defaults, then the
-plugin's `cordis.yml` entry (composition base), then the user settings
-document. All fields are optional.
+The plugin reads its settings from schema defaults and the active profile's
+plugin entry, including inherited configuration and profile overrides. All
+fields are optional. DSH exposes the nine volatile Config fields under the
+`dsh-browser` entry id. Saving uses one atomic profile mutation; the running
+host applies accepted values without restarting the plugin. Clearing a field
+restores inheritance.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -147,7 +150,7 @@ document. All fields are optional.
 
 ### Visual settings card
 
-The plugin provides an interactive settings form out of the box (requires DSH v0.1.1-rc.1 or later):
+The plugin provides an interactive settings form through DSH's ConfigForms API:
 
 - **Web**: **Settings → Plugins → Embedded browser**
 - **Desktop**: standalone **Embedded browser** entry in the left nav
@@ -158,27 +161,20 @@ The plugin provides an interactive settings form out of the box (requires DSH v0
 
 ### Config file method (without the visual settings card)
 
-If you prefer not to use the visual settings card, set the same fields directly. Two layers are available:
-
-**Plugin entry config** (`cordis.yml` or your profile's plugin config) — the
-composition base, applies to every user of that profile:
+If you prefer file editing, set the same fields in the active profile's
+`dsh-browser` plugin entry. For example:
 
 ```yaml
-plugins:
-  dsh-browser:
+- id: dsh-browser
+  name: '@nono-neko/dsh-browser'
+  config:
     defaultHome: https://www.google.com
     maxTabs: 20
     proxyServer: http://127.0.0.1:7890
 ```
 
-**User settings document** (`~/.dsh/settings.yaml`) — per-user overrides that
-layer on top of the entry config:
-
-```yaml
-dsh-browser:
-  browserExecutable: C:\Program Files\Google\Chrome\Application\chrome.exe
-  allowPrivateAccess: true
-```
+The current DSH settings editor persists to the active profile patch. The
+legacy `~/.dsh/settings.yaml` is no longer the settings write target.
 
 ### Update notification behavior
 

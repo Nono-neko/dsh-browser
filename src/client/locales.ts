@@ -4,6 +4,14 @@
  * @module dsh-browser/client/locales
  */
 
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    'dsh-browser': BrowserKey
+  }
+}
+
 export const zh = {
   'updates.title': '浏览器更新',
   'updates.available': '可更新',
@@ -135,7 +143,7 @@ export const zh = {
   'settings.off': '关',
   'settings.overridden': '已覆盖',
   'settings.reset': '恢复默认',
-  'settings.notExposed': '当前 DSH 版本未向设置页暴露本插件的配置命名空间，表单不可用。可编辑 ~/.dsh/settings.yaml 直接配置。',
+  'settings.notExposed': '当前连接未提供本插件的实时配置。请确认插件已加载，并检查当前 profile 中的插件配置。',
   'settings.readOnly': '当前部署的设置只读。',
   'settings.expand': '展开设置',
   'settings.collapse': '收起设置',
@@ -281,7 +289,7 @@ export const en: Record<BrowserKey, string> = {
   'settings.off': 'Off',
   'settings.overridden': 'Overridden',
   'settings.reset': 'Reset to default',
-  'settings.notExposed': 'This DSH version does not expose this plugin\'s settings namespace to the configuration page, so the form is unavailable. Edit ~/.dsh/settings.yaml directly.',
+  'settings.notExposed': 'This connection does not provide this plugin\'s live configuration. Check that the plugin is loaded and review its configuration in the active profile.',
   'settings.readOnly': 'This deployment stores settings read-only.',
   'settings.expand': 'Show settings',
   'settings.collapse': 'Hide settings',

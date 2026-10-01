@@ -31,9 +31,13 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-settings-plugins"
       ],
       "platform": "web"
@@ -41,9 +45,9 @@
   },
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && tsdown",
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.host.json && tsc -p tsconfig.build.client.json && tsdown",
     "watch": "tsdown --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.build.host.json && tsc --noEmit -p tsconfig.build.client.json && tsc --noEmit -p tsconfig.test.json",
     "pretest": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",

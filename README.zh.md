@@ -14,7 +14,8 @@ agent 工具、`/api/dsh-browser` 路由族（Puppeteer 页面代理 + SSE 打�
 入口、多标签面板与插件设置卡。热插拔挂载——
 `dsh plugin --profile <name> add link:<repo>`。
 
-> **平台支持**：同时兼容 DSH Web 版与 Desktop 版（需 DSH v0.1.1-rc.1 及以上）。
+> **平台支持**：本版本适配 DSH 当前的 ConfigForms 与 volatile Config API，
+> 支持 Web 版与 Desktop 版。
 > 可视化设置卡在两端均开箱即用，无需改动 DSH 源码。Web 版位于「设置 → 插件」，
 > Desktop 版为左侧导航栏独立菜单项「内置浏览器」。
 
@@ -103,8 +104,10 @@ dsh plugin --profile <name> remove link:<repo>
 
 ## 配置
 
-插件设置采用分层解析：schema 默认值 → 插件 `cordis.yml` 入口配置（组合基
-层）→ 用户设置文档。所有字段均可选。
+插件设置由 schema 默认值和当前 profile 的插件入口共同解析，包括继承配置
+与 profile 覆盖。所有字段均可选。DSH 以 `dsh-browser` 入口 id 暴露九项
+volatile Config 字段。保存时一次性提交全部修改，host 实时应用已接受的值，
+无需重启插件；清除字段后恢复继承。
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
@@ -120,7 +123,7 @@ dsh plugin --profile <name> remove link:<repo>
 
 ### 可视化设置卡
 
-插件开箱即用地提供可交互的设置表单（需 DSH v0.1.1-rc.1 及以上）：
+插件通过 DSH 的 ConfigForms API 提供可交互的设置表单：
 
 - **Web 版**：**设置 → 插件 → 内置浏览器**
 - **Desktop 版**：左侧导航栏 **内置浏览器** 独立设置页
@@ -131,27 +134,20 @@ dsh plugin --profile <name> remove link:<repo>
 
 ### 配置文件方式（不使用可视化设置卡）
 
-如果不想使用可视化设置卡，可以直接通过文件配置相同字段。有两个层级：
-
-**插件入口配置**（`cordis.yml` 或 profile 的插件配置）——组合基层，对该
-profile 的所有用户生效：
+如果偏好直接编辑文件，在当前 profile 的 `dsh-browser` 插件入口中配置
+相同字段。例如：
 
 ```yaml
-plugins:
-  dsh-browser:
+- id: dsh-browser
+  name: '@nono-neko/dsh-browser'
+  config:
     defaultHome: https://www.google.com
     maxTabs: 20
     proxyServer: http://127.0.0.1:7890
 ```
 
-**用户设置文档**（`~/.dsh/settings.yaml`）——用户级覆盖，叠加在入口配置之
-上：
-
-```yaml
-dsh-browser:
-  browserExecutable: C:\Program Files\Google\Chrome\Application\chrome.exe
-  allowPrivateAccess: true
-```
+当前 DSH 设置页把修改保存到当前 profile 的 patch 文件，旧版
+`~/.dsh/settings.yaml` 不再是设置写入目标。
 
 ### 更新提示行为
 

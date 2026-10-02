@@ -17,7 +17,7 @@ system-prompt announcement; the browser half renders the sidebar entry, the
 multi-tab panel, and the plugin settings card. Hot-pluggable — mounted via
 `dsh plugin --profile <name> add link:<repo>`.
 
-> **Platform support.** This version targets DSH's current
+> **Platform support.** Version 0.4.0 requires DSH v0.2.0-rc.1 or later with
 > ConfigForms and volatile Config APIs on Web and Desktop. The visual settings form works on both platforms —
 > no DSH source changes needed. On Web it appears under Settings → Plugins; on
 > Desktop it appears as a standalone "Embedded browser" entry in the left nav.
@@ -237,7 +237,7 @@ dark/light themes, modal keyboard behavior, and unchanged preview scroll.
 ```sh
 pnpm install    # @deepseek-ai/* SDK packages are public on npm (or a mirror)
 pnpm build      # tsc types + tsdown dual-half bundle (lib/index.js + lib/client.js)
-pnpm typecheck  # tsc --noEmit
+pnpm typecheck  # separate host, client, and test type checks
 pnpm test       # vitest
 ```
 

@@ -73,6 +73,7 @@
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.1",
     "@deepseek-ai/dsh-client-connection": "0.2.0-rc.1",
     "@deepseek-ai/dsh-client-locale": "0.2.0-rc.1",
+    "@deepseek-ai/dsh-client-store": "0.2.0-rc.1",
     "@deepseek-ai/dsh-client-ui-renderer": "0.2.0-rc.1",
     "@deepseek-ai/dsh-client-ui-session": "0.2.0-rc.1",
     "@deepseek-ai/dsh-client-ui-settings": "0.2.0-rc.1",

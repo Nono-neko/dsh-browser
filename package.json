@@ -85,6 +85,7 @@
     "@deepseek-ai/dsh-settings": "0.2.0-rc.1",
     "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.1",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.1",
+    "@deepseek-ai/dsh-util-values": "0.2.0-rc.1",
     "@deepseek-ai/dsh-workspace": "0.2.0-rc.1",
     "@deepseek-ai/schemastery": "3.18.4",
     "@types/node": "^22.20.0",

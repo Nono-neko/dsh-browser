@@ -68,16 +68,24 @@ export interface BrowserConfig {
   proxyServer?: string
 }
 
-/** The result of one browser_read fetch, as rendered to the agent. */
+/**
+ * The result of one browser_read fetch, as rendered to the agent.
+ *
+ * Every optional field is ABSENT rather than present-with-`undefined`: the tool
+ * output crosses the host's lossless-JSON boundary, where an own property whose
+ * value is `undefined` cannot be materialized (the snapshot rejects the value and
+ * the caller sees `INVALID_TOOL_OUTPUT`). Optional properties therefore encode
+ * "not applicable" by omission.
+ */
 export interface ReadResult {
   ok: boolean
   url: string
-  status: number | undefined
-  contentType: string | undefined
-  title: string | undefined
+  status?: number
+  contentType?: string
+  title?: string
   text: string
   truncated: boolean
-  error: string | undefined
+  error?: string
 }
 
 /** The result of one browser_open broadcast, as rendered to the agent. */

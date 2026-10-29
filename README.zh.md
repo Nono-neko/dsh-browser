@@ -14,7 +14,7 @@ agent 工具、`/api/dsh-browser` 路由族（Puppeteer 页面代理 + SSE 打�
 入口、多标签面板与插件设置卡。热插拔挂载——
 `dsh plugin --profile <name> add link:<repo>`。
 
-> **平台支持**：0.4.0 要求 DSH v0.2.0-rc.1 及以上版本提供 ConfigForms 与
+> **平台支持**：0.4.1 要求 DSH v0.2.0-rc.1 及以上版本提供 ConfigForms 与
 > volatile Config API，支持 Web 版与 Desktop 版。
 > 可视化设置卡在两端均开箱即用，无需改动 DSH 源码。Web 版位于「设置 → 插件」，
 > Desktop 版为左侧导航栏独立菜单项「内置浏览器」。

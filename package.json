@@ -1,6 +1,6 @@
 {
   "name": "@nono-neko/dsh-browser",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Embedded browser for the DSH web and desktop GUI with multi-tab browsing, frontend review comments, a CodeMirror editor, and agent tools. Standalone cordis bundle using ConfigForms and live settings. Requires DSH v0.2.0-rc.1 or later.",
   "type": "module",
   "packageManager": "pnpm@11.7.0",

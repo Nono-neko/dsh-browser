@@ -1,5 +1,24 @@
 # 更新记录
 
+## 0.4.1 - 2026-10-29
+
+### 修复
+
+- 修复 `browser_read` 始终报错 `INVALID_TOOL_OUTPUT: value is not lossless JSON`
+  的问题：省略不可用的可选字段，不再返回值为 `undefined` 的属性。
+- 保持无标题 HTML、缺少 Content-Type 响应，以及 HTTP 和传输错误的结构化输出。
+
+### 开发
+
+- 在工具执行边界补充无损 JSON 回归测试。
+- 增加 GitHub Actions：PR 和 master 推送自动运行类型检查、host/client 构建及完整测试，
+  使用 Node 24 和项目声明的 pnpm 版本。
+
+兼容性要求不变：DSH v0.2.0-rc.1 或以上版本。
+
+感谢 @JohnHaixin5777 提供修复，感谢 @3338682145 最早报告问题
+（issues #2、#3；pull requests #4、#5、#6）。
+
 ## 0.4.0 - 2026-10-02
 
 ### 兼容性

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.1 - 2026-10-29
+
+### Fixes
+
+- Fix `browser_read` failing with `INVALID_TOOL_OUTPUT: value is not lossless JSON`
+  by omitting unavailable optional fields instead of returning `undefined` values.
+- Preserve readable output for titleless HTML and responses without Content-Type,
+  including structured HTTP and transport failures.
+
+### Development
+
+- Add lossless-JSON regression tests at the tool execution boundary.
+- Add GitHub Actions checks for pull requests and pushes to master: type checking,
+  host/client builds, and the complete test suite using Node 24 and the declared pnpm version.
+
+Compatibility is unchanged: DSH v0.2.0-rc.1 or later is required.
+
+Thanks to @JohnHaixin5777 for the fix and @3338682145 for the original report
+(issues #2 and #3; pull requests #4, #5, and #6).
+
 ## 0.4.0 - 2026-10-02
 
 ### Compatibility

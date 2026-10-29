@@ -361,6 +361,41 @@ describe('browserReadTool lossless output', () => {
     expectLossless(value)
   })
 
+  it('omits missing response headers from a successful read', async () => {
+    // A string Response auto-adds Content-Type; bytes preserve absent headers.
+    const fetchMock = vi.fn(async () => new Response(new TextEncoder().encode('plain body')))
+
+    const value = await runRead(fetchMock)
+
+    expect(value.ok).toBe(true)
+    expect(value.text).toBe('plain body')
+    expect('contentType' in value).toBe(false)
+    expect('title' in value).toBe(false)
+    expectLossless(value)
+  })
+
+  it('omits the title for titleless HTML', async () => {
+    const fetchMock = vi.fn(async () => new Response('<html><body><p>Hello body</p></body></html>', {
+      headers: { 'content-type': 'text/html' },
+    }))
+
+    const value = await runRead(fetchMock)
+
+    expect(value.ok).toBe(true)
+    expect(value.text).toBe('Hello body')
+    expect('title' in value).toBe(false)
+    expectLossless(value)
+  })
+
+  it('omits missing response headers from an HTTP failure', async () => {
+    const value = await runRead(vi.fn(async () => new Response(null, { status: 503 })))
+
+    expect(value.ok).toBe(false)
+    expect(value.error).toBe('HTTP 503')
+    expect('contentType' in value).toBe(false)
+    expectLossless(value)
+  })
+
   it('publishes an HTTP failure as lossless JSON', async () => {
     const fetchMock = vi.fn(async () => new Response('nope', {
       status: 503,

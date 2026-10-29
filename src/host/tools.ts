@@ -160,57 +160,65 @@ export async function fetchGuarded(
   return { ok: false, error: 'too many redirects' }
 }
 
-/** Read one page into the shared result shape. Exported for unit testing. */
+/**
+ * Read one page into the shared result shape. Exported for unit testing.
+ *
+ * Every branch omits the optional fields it cannot fill. A tool output crosses
+ * the host's lossless-JSON boundary, where an own property holding `undefined`
+ * is not representable: the snapshot rejects the whole value and the caller sees
+ * `INVALID_TOOL_OUTPUT`. Returning `{ status: undefined, ... }` therefore broke
+ * `browser_read` for every URL, successful or not.
+ */
 export async function readPage(
   input: string,
   allowPrivate: boolean,
   maxChars: number,
   deps: { fetch?: typeof fetch } = {},
 ): Promise<ReadResult> {
-  const base: ReadResult = {
-    ok: false, url: input, status: undefined, contentType: undefined,
-    title: undefined, text: '', truncated: false, error: undefined,
-  }
   const outcome = await fetchGuarded(input, allowPrivate, { fetch: deps.fetch })
-  if (!outcome.ok) return { ...base, error: outcome.error }
+  if (!outcome.ok) {
+    return { ok: false, url: input, text: '', truncated: false, error: outcome.error }
+  }
   const { res, finalUrl } = outcome
-  base.url = finalUrl
-  base.status = res.status
-  base.contentType = res.headers.get('content-type') ?? undefined
+  const status = res.status
+  const contentType = res.headers.get('content-type') ?? undefined
+  // Spread in only the optional fields that are actually known.
+  const contentTypeField = contentType === undefined ? {} : { contentType }
+  const fail = (error: string): ReadResult => ({
+    ok: false, url: finalUrl, status, ...contentTypeField, text: '', truncated: false, error,
+  })
+
   if (!res.ok) {
     await cancelBody(res.body)
-    base.error = `HTTP ${res.status}`
-    return base
+    return fail(`HTTP ${status}`)
   }
   const length = res.headers.get('content-length')
   if (length !== null && Number(length) > MAX_BODY_BYTES) {
     await cancelBody(res.body)
-    base.error = `body exceeds the ${MAX_BODY_BYTES} byte cap`
-    return base
+    return fail(`body exceeds the ${MAX_BODY_BYTES} byte cap`)
   }
-  const contentType = base.contentType ?? ''
-  if (!TEXT_TYPES.test(contentType) && contentType !== '') {
+  if (contentType !== undefined && contentType !== '' && !TEXT_TYPES.test(contentType)) {
     await cancelBody(res.body)
-    base.error = `unsupported content type: ${contentType}`
-    return base
+    return fail(`unsupported content type: ${contentType}`)
   }
   const bodyOutcome = await readBodyText(res)
-  if (!bodyOutcome.ok) {
-    base.error = bodyOutcome.error
-    return base
-  }
+  if (!bodyOutcome.ok) return fail(bodyOutcome.error)
+
   const body = bodyOutcome.text
-  if (/html/i.test(contentType)) {
-    base.title = extractTitle(body)
+  if (contentType !== undefined && /html/i.test(contentType)) {
+    const title = extractTitle(body)
     const extracted = extractText(body, maxChars)
-    base.text = extracted.text
-    base.truncated = extracted.truncated
-  } else {
-    base.text = body.length > maxChars ? body.slice(0, maxChars) : body
-    base.truncated = body.length > maxChars
+    return {
+      ok: true, url: finalUrl, status, ...contentTypeField,
+      ...(title === undefined ? {} : { title }),
+      text: extracted.text, truncated: extracted.truncated,
+    }
   }
-  base.ok = true
-  return base
+  const truncated = body.length > maxChars
+  return {
+    ok: true, url: finalUrl, status, ...contentTypeField,
+    text: truncated ? body.slice(0, maxChars) : body, truncated,
+  }
 }
 
 /** Render one read result compactly. */

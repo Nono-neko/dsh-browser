@@ -8,7 +8,9 @@ vi.mock('node:dns/promises', () => {
   return { default: { lookup }, lookup }
 })
 
-import { browserOpenTool, fetchGuarded, readPage } from '../src/host/tools.ts'
+import { browserOpenTool, browserReadTool, fetchGuarded, readPage } from '../src/host/tools.ts'
+import type { ReadResult } from '../src/core/types.ts'
+import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 
 describe('fetchGuarded', () => {
   it('refuses literal private addresses before any fetch', async () => {
@@ -304,6 +306,87 @@ describe('browserOpenTool', () => {
     const result = await run({ url: 'https://example.com/' })
     expect(result.opened).toBe(false)
     expect(result.message).toContain('no GUI panel')
+  })
+})
+
+/**
+ * The host snapshots every tool output as lossless JSON before it reaches the
+ * model. An own property whose value is `undefined` is not representable there:
+ * the snapshot returns `undefined` and the caller sees
+ * `INVALID_TOOL_OUTPUT: value is not lossless JSON`. These tests run the real
+ * `browser_read` tool body and apply that exact rule, so a result that only
+ * looks fine to `toEqual` cannot pass.
+ */
+describe('browserReadTool lossless output', () => {
+  type ReadArgs = { url: string; maxChars?: number }
+
+  async function runRead(
+    fetchMock: typeof fetch,
+    url = 'https://public.example/page',
+  ): Promise<ReadResult> {
+    const tool = browserReadTool((target, maxChars) => readPage(target, false, maxChars, { fetch: fetchMock }))
+    return await (tool.execute as (args: ReadArgs) => Promise<ReadResult>)({ url })
+  }
+
+  /** Assert the host's snapshot accepts the value, and nothing is `undefined`. */
+  function expectLossless(value: ReadResult): void {
+    expect(snapshotJsonValue(value)).toEqual(value)
+    expect(Object.entries(value).filter(([, entry]) => entry === undefined)).toEqual([])
+  }
+
+  it('publishes a successful HTML read as lossless JSON', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      '<html><head><title>Page Title</title></head><body><p>Hello body</p></body></html>',
+      { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+    ))
+
+    const value = await runRead(fetchMock)
+
+    expect(value.ok).toBe(true)
+    expect(value.title).toBe('Page Title')
+    expect(value.text).toContain('Hello body')
+    expectLossless(value)
+  })
+
+  it('omits the title instead of setting it to undefined for non-HTML text', async () => {
+    const fetchMock = vi.fn(async () => new Response('plain body', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    }))
+
+    const value = await runRead(fetchMock, 'https://public.example/notes.txt')
+
+    expect(value.ok).toBe(true)
+    expect('title' in value).toBe(false)
+    expectLossless(value)
+  })
+
+  it('publishes an HTTP failure as lossless JSON', async () => {
+    const fetchMock = vi.fn(async () => new Response('nope', {
+      status: 503,
+      headers: { 'content-type': 'text/plain' },
+    }))
+
+    const value = await runRead(fetchMock, 'https://public.example/unavailable')
+
+    expect(value.ok).toBe(false)
+    expect(value.error).toBe('HTTP 503')
+    expectLossless(value)
+  })
+
+  it('publishes a transport failure as lossless JSON without invented fields', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError('Network down')
+    })
+
+    const value = await runRead(fetchMock, 'https://public.example/down')
+
+    expect(value.ok).toBe(false)
+    expect(value.error).toContain('fetch failed: Network down')
+    expect(value.url).toBe('https://public.example/down')
+    expect('status' in value).toBe(false)
+    expect('contentType' in value).toBe(false)
+    expectLossless(value)
   })
 })
 
